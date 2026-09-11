@@ -12,137 +12,149 @@ datasource db {
 }
 
 model User {
-  id Int @id @default(autoincrement())
-  name String
-  email String @unique
-  password String
-  role Role
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   orders Order[]
 
   orderStatusHistories OrderStatusHistory[]
+
+  paymentsReceived Payment[]
 }
+
 enum Role {
   ADMIN
   STAFF
 }
 
-model Customer{
-  id Int @id @default(autoincrement())
-  name String
-  phone String
-  address String?
+model Customer {
+  id        Int      @id @default(autoincrement())
+  name      String
+  phone     String
+  address   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships Membership[]
+  membership Membership?
 
   orders Order[]
 }
 
-model Membership{
-  id Int @id @default(autoincrement())
-  customerId Int @unique
-  customer Customer @relation(fields: [customerId], references: [id])
-  memberCode String @unique
-  discountPercent Decimal
-  isActive Boolean
-  joinedAt DateTime @default(now())
+model Membership {
+  id              Int      @id @default(autoincrement())
+  customerId      Int      @unique
+  customer        Customer @relation(fields: [customerId], references: [id])
+  memberCode      String   @unique
+  discountPercent Decimal  @default(10)
+  isActive        Boolean  @default(true)
+  joinedAt        DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
-model Service{
-  id Int @id @default(autoincrement())
-  name String
-  category ServiceCategory
-  unit ServiceUnit
-  price Decimal
-  isActive Boolean
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Service {
+  id        Int             @id @default(autoincrement())
+  name      String
+  category  ServiceCategory
+  unit      ServiceUnit
+  price     Decimal
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
   orderItems OrderItem[]
 }
+
 enum ServiceUnit {
   KG
   SATUAN
 }
+
 enum ServiceCategory {
   REGULER
   EKSPRESS
-  SATUAN
+  KHUSUS
 }
 
-model Order{
-  id Int @id @default(autoincrement())
-  orderCode String @unique
-  customerId Int
-  customer Customer @relation(fields: [customerId], references: [id])
-  createdById Int
-  user User @relation(fields: [createdById], references: [id])
-  orderStatus OrderStatus @default(PESANAN_DITERIMA)
-  paymentStatus PaymentStatus
-  subtotal Decimal
-  discount Decimal
-  total Decimal
-  dueAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Order {
+  id            Int           @id @default(autoincrement())
+  orderCode     String        @unique
+  customerId    Int
+  customer      Customer      @relation(fields: [customerId], references: [id])
+  createdById   Int
+  user          User          @relation(fields: [createdById], references: [id])
+  orderStatus   OrderStatus   @default(PESANAN_DITERIMA)
+  paymentStatus PaymentStatus @default(BELUM_DIBAYAR)
+  subtotal      Decimal
+  discount      Decimal       @default(0)
+  total         Decimal
+  dueAt         DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   orderItems OrderItem[]
 
-  payments Payment[]
+  payment Payment?
 
   orderStatusHistories OrderStatusHistory[]
 }
+
 enum PaymentStatus {
   BELUM_DIBAYAR
   SUDAH_DIBAYAR
 }
+
 enum OrderStatus {
   PESANAN_DITERIMA
   DICUCI
+  DIKERINGKAN
   DISETRIKA
   SIAP_DIAMBIL
   SELESAI
   DIBATALKAN
 }
 
-model OrderItem{
-  id Int @id @default(autoincrement())
-  orderId Int
-  order Order @relation(fields: [orderId], references: [id])
-  serviceId Int
-  service Service @relation(fields: [serviceId], references: [id])
-  quantity Float
+model OrderItem {
+  id            Int      @id @default(autoincrement())
+  orderId       Int
+  order         Order    @relation(fields: [orderId], references: [id])
+  serviceId     Int
+  service       Service  @relation(fields: [serviceId], references: [id])
+  quantity      Float
   priceSnapshot Decimal
-  subtotal Decimal
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  subtotal      Decimal
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
-model Payment{
-  id Int @id @default(autoincrement())
-  orderId Int @unique
-  order Order @relation(fields: [orderId], references: [id])
-  amount Decimal
-  method PaymentMethod
-  paidAt DateTime @default(now())
+model Payment {
+  id           Int           @id @default(autoincrement())
+  orderId      Int           @unique
+  order        Order         @relation(fields: [orderId], references: [id])
+  amount       Decimal
+  method       PaymentMethod
+  paidAt       DateTime      @default(now())
+  receivedById Int
+  receivedBy   User          @relation(fields: [receivedById], references: [id])
 }
+
 enum PaymentMethod {
   CASH
   TRANSFER
   QRIS
 }
 
-model OrderStatusHistory{
-  id Int @id @default(autoincrement())
-  orderId Int
-  order Order @relation(fields: [orderId], references: [id])
+model OrderStatusHistory {
+  id          Int         @id @default(autoincrement())
+  orderId     Int
+  order       Order       @relation(fields: [orderId], references: [id])
   orderStatus OrderStatus
   changedById Int
-  user User @relation(fields: [changedById], references: [id])
-  changedAt DateTime @default(now())
-  note String?
+  user        User        @relation(fields: [changedById], references: [id])
+  changedAt   DateTime    @default(now())
+  note        String?
 }

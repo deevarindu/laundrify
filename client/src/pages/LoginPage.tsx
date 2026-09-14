@@ -24,7 +24,7 @@ const LoginPage = () => {
         email,
         password,
       });
-
+      
       const { user, token } = response.data.data;
 
       login(user, token);

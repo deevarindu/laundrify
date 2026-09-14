@@ -13,7 +13,7 @@ const LoginPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SubmitEvent) => {
     e.preventDefault();
 
     try {
@@ -24,7 +24,7 @@ const LoginPage = () => {
         email,
         password,
       });
-      
+
       const { user, token } = response.data.data;
 
       login(user, token);
@@ -69,7 +69,7 @@ const LoginPage = () => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full rounded-md border px-3 py-2"
-            placeholder="admin@laundrify.com"
+            placeholder="enter your email"
           />
         </div>
 
@@ -81,7 +81,7 @@ const LoginPage = () => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="w-full rounded-md border px-3 py-2"
-            placeholder="••••••••"
+            placeholder="enter your password"
           />
         </div>
 

@@ -5,9 +5,9 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
 import AppLayout from "./components/layout/AppLayout";
 import DashboardPage from "./pages/DashboardPage";
-// import CustomersPage from "./pages/customers/CustomersPage";
-// import ServicesPage from "./pages/services/ServicesPage";
-// import OrdersPage from "./pages/orders/OrdersPage";
+import OrdersPage from "./pages/orders/OrdersPage";
+import CustomersPage from "./pages/customers/CustomersPage";
+import ServicesPage from "./pages/services/ServicesPage";
 
 const App = () => {
   return (
@@ -16,14 +16,14 @@ const App = () => {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
-          {/* <Route element={<ProtectedRoute />}> */}
+          <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<DashboardPage />} />
-              {/* <Route path="/customers" element={<CustomersPage />} />
+              <Route path="/orders" element={<OrdersPage />} />
+              <Route path="/customers" element={<CustomersPage />} />
               <Route path="/services" element={<ServicesPage />} />
-              <Route path="/orders" element={<OrdersPage />} /> */}
             </Route>
-          {/* </Route> */}
+          </Route>
 
           <Route
             path="*"

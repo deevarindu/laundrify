@@ -7,7 +7,7 @@ const Header = () => {
     <header className="flex h-16 items-center justify-between border-b bg-background px-6">
       <div>
         <p className="text-sm text-muted-foreground">
-          Welcome back
+          
         </p>
         <p className="font-semibold">{user?.name}</p>
       </div>

@@ -77,7 +77,7 @@ enum ServiceUnit {
 enum ServiceCategory {
   REGULER
   EKSPRESS
-  SATUAN
+  KHUSUS
 }
 
 model Order {

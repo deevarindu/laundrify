@@ -14,6 +14,9 @@ export const getAllUsers = async (req: Request, res: Response) => {
         createdAt: true,
         updatedAt: true,
       },
+      orderBy: {
+        createdAt: "desc",
+      },
     });
 
     return res.status(200).json({
@@ -22,7 +25,6 @@ export const getAllUsers = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error(error);
-
     return res.status(500).json({
       message: "Failed to fetch users.",
     });
@@ -33,7 +35,7 @@ export const getUserById = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid user ID.",
       });
@@ -76,9 +78,7 @@ export const getUserById = async (req: Request, res: Response) => {
 export const createUser = async (req: Request, res: Response) => {
   try {
     const { name, email, password, role } = req.body;
-
     const passwordHash = await bcrypt.hash(password, 10);
-
     const newUser = await prisma.user.create({
       data: {
         name,
@@ -97,12 +97,11 @@ export const createUser = async (req: Request, res: Response) => {
     });
 
     return res.status(201).json({
-      message: "New user successfully registered.",
+      message: "New user successfully created.",
       data: newUser,
     });
   } catch (error) {
     console.error(error);
-
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
@@ -111,9 +110,8 @@ export const createUser = async (req: Request, res: Response) => {
         message: "Email already exists.",
       });
     }
-
     return res.status(500).json({
-      message: "Failed to register user.",
+      message: "Failed to create user.",
     });
   }
 };
@@ -122,7 +120,7 @@ export const updateUser = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid user ID.",
       });
@@ -151,6 +149,12 @@ export const updateUser = async (req: Request, res: Response) => {
 
     if (role !== undefined) {
       data.role = role;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({
+        message: "No fields to update.",
+      });
     }
 
     const updatedUser = await prisma.user.update({
@@ -203,7 +207,7 @@ export const deleteUser = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid user ID.",
       });
@@ -235,7 +239,8 @@ export const deleteUser = async (req: Request, res: Response) => {
       error.code === "P2003"
     ) {
       return res.status(409).json({
-        message: "User cannot be deleted because they are still referenced by other data.",
+        message:
+          "User cannot be deleted because they are still referenced by other data.",
       });
     }
 

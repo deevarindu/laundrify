@@ -7,9 +7,11 @@ import orderRoute from "./orderRoute.js";
 import paymentRoute from "./paymentRoute.js";
 import orderItemRoute from "./orderItemRoute.js";
 import orderStatusHistoryRoute from "./orderStatusHistoryRoute.js";
+import authRoute from "./authRoute.js";
 
 const router = Router();
 
+router.use('/auth', authRoute);
 router.use('/user', userRoute);
 router.use('/customer', customerRoute);
 router.use('/membership', membershipRoute);

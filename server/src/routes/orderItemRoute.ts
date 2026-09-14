@@ -1,10 +1,12 @@
 import { Router } from "express";
-import { createOrderItem, deleteOrderItem, updateOrderItem } from "../controllers/orderItemController.js";
+import { createOrderItem, updateOrderItem, deleteOrderItem,} from "../controllers/orderItemController.js";
+import { authenticate } from "../middleware/authMiddleware.js";
+import { authorize } from "../middleware/roleMiddleware.js";
 
 const router = Router();
 
-router.post('/', createOrderItem);
-router.patch('/:id', updateOrderItem);
-router.delete('/:id', deleteOrderItem);
+router.post('/', authenticate, authorize("ADMIN", "STAFF"), createOrderItem);
+router.patch('/:id', authenticate, authorize("ADMIN", "STAFF"), updateOrderItem);
+router.delete('/:id', authenticate, authorize("ADMIN", "STAFF"), deleteOrderItem);
 
 export default router;

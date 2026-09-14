@@ -23,14 +23,11 @@ export const getAllServices = async (req: Request, res: Response) => {
   }
 };
 
-export const getServiceById = async (
-  req: Request,
-  res: Response
-) => {
+export const getServiceById = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid service ID.",
       });
@@ -54,25 +51,15 @@ export const getServiceById = async (
     });
   } catch (error) {
     console.error(error);
-
     return res.status(500).json({
       message: "Failed to fetch service.",
     });
   }
 };
 
-export const createService = async (
-  req: Request,
-  res: Response
-) => {
+export const createService = async (req: Request, res: Response) => {
   try {
-    const {
-      name,
-      category,
-      unit,
-      price,
-      isActive,
-    } = req.body;
+    const {name, category, unit, price, isActive} = req.body;
 
     const newService = await prisma.service.create({
       data: {
@@ -92,21 +79,17 @@ export const createService = async (
     });
   } catch (error) {
     console.error(error);
-
     return res.status(500).json({
       message: "Failed to add new service.",
     });
   }
 };
 
-export const updateService = async (
-  req: Request,
-  res: Response
-) => {
+export const updateService = async (req: Request,res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid service ID.",
       });
@@ -148,6 +131,12 @@ export const updateService = async (
       data.isActive = isActive;
     }
 
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({
+        message: "No fields to update.",
+      });
+    }
+
     const updatedService = await prisma.service.update({
       where: {
         id,
@@ -177,14 +166,11 @@ export const updateService = async (
   }
 };
 
-export const deleteService = async (
-  req: Request,
-  res: Response
-) => {
+export const deleteService = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid service ID.",
       });

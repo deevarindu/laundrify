@@ -1,12 +1,11 @@
 import { Router } from "express";
-import { createOrderStatusHistory, deleteOrderStatusHistory, getAllOrderStatusHistories, getOrderStatusHistoryById, updateOrderStatusHistory } from "../controllers/orderStatusHistoryController.js";
+import { getAllOrderStatusHistories, getOrderStatusHistoryById } from "../controllers/orderStatusHistoryController.js";
+import { authenticate } from "../middleware/authMiddleware.js";
+import { authorize } from "../middleware/roleMiddleware.js";
 
-const router = Router()
+const router = Router();
 
-router.get('/', getAllOrderStatusHistories);
-router.get('/:id', getOrderStatusHistoryById);
-router.post('/', createOrderStatusHistory);
-router.patch('/:id', updateOrderStatusHistory);
-router.delete('/:id', deleteOrderStatusHistory);
+router.get('/', authenticate, authorize("ADMIN", "STAFF"), getAllOrderStatusHistories);
+router.get('/:id', authenticate, authorize("ADMIN", "STAFF"), getOrderStatusHistoryById);
 
 export default router;

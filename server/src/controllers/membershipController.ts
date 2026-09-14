@@ -26,14 +26,11 @@ export const getAllMemberships = async (req: Request, res: Response) => {
   }
 };
 
-export const getMembershipById = async (
-  req: Request,
-  res: Response
-) => {
+export const getMembershipById = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid membership ID.",
       });
@@ -67,16 +64,16 @@ export const getMembershipById = async (
   }
 };
 
-export const createMembership = async (
-  req: Request,
-  res: Response
-) => {
+export const createMembership = async (req: Request,res: Response) => {
   try {
     const { customerId, discountPercent } = req.body;
 
-    const id = Number(customerId);
+    const customerIdNumber = Number(customerId);
 
-    if (Number.isNaN(id)) {
+    if (
+      !Number.isInteger(customerIdNumber) ||
+      customerIdNumber <= 0
+    ) {
       return res.status(400).json({
         message: "Invalid customer ID.",
       });
@@ -84,7 +81,7 @@ export const createMembership = async (
 
     const customer = await prisma.customer.findUnique({
       where: {
-        id,
+        id: customerIdNumber,
       },
     });
 
@@ -96,7 +93,7 @@ export const createMembership = async (
 
     const existingMembership = await prisma.membership.findUnique({
       where: {
-        customerId: id,
+        customerId: customerIdNumber,
       },
     });
 
@@ -106,16 +103,33 @@ export const createMembership = async (
       });
     }
 
-    const memberCode = `MBR-${Date.now()}`;
+    const data: {
+      customerId: number;
+      memberCode: string;
+      discountPercent?: number;
+    } = {
+      customerId: customerIdNumber,
+      memberCode: `MBR-${Date.now()}`,
+    };
+
+    if (discountPercent !== undefined) {
+      const discountPercentNumber = Number(discountPercent);
+
+      if (
+        !Number.isFinite(discountPercentNumber) ||
+        discountPercentNumber < 0 ||
+        discountPercentNumber > 100
+      ) {
+        return res.status(400).json({
+          message: "Discount percent must be between 0 and 100.",
+        });
+      }
+
+      data.discountPercent = discountPercentNumber;
+    }
 
     const membership = await prisma.membership.create({
-      data: {
-        customerId: id,
-        memberCode,
-        ...(discountPercent !== undefined && {
-          discountPercent: Number(discountPercent),
-        }),
-      },
+      data,
       include: {
         customer: true,
       },
@@ -143,20 +157,17 @@ export const createMembership = async (
   }
 };
 
-export const updateMembership = async (
-  req: Request,
-  res: Response
-) => {
+export const updateMembership = async (req: Request,res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid membership ID.",
       });
     }
 
-    const { customerId, discountPercent, isActive } = req.body;
+    const {customerId, discountPercent,isActive,} = req.body;
 
     const existingMembership = await prisma.membership.findUnique({
       where: {
@@ -179,7 +190,10 @@ export const updateMembership = async (
     if (customerId !== undefined) {
       const newCustomerId = Number(customerId);
 
-      if (Number.isNaN(newCustomerId)) {
+      if (
+        !Number.isInteger(newCustomerId) ||
+        newCustomerId <= 0
+      ) {
         return res.status(400).json({
           message: "Invalid customer ID.",
         });
@@ -197,15 +211,55 @@ export const updateMembership = async (
         });
       }
 
+      const existingCustomerMembership =
+        await prisma.membership.findUnique({
+          where: {
+            customerId: newCustomerId,
+          },
+        });
+
+      if (
+        existingCustomerMembership &&
+        existingCustomerMembership.id !== id
+      ) {
+        return res.status(409).json({
+          message: "Customer already has a membership.",
+        });
+      }
+
       data.customerId = newCustomerId;
     }
 
     if (discountPercent !== undefined) {
-      data.discountPercent = Number(discountPercent);
+      const discountPercentNumber = Number(discountPercent);
+
+      if (
+        !Number.isFinite(discountPercentNumber) ||
+        discountPercentNumber < 0 ||
+        discountPercentNumber > 100
+      ) {
+        return res.status(400).json({
+          message: "Discount percent must be between 0 and 100.",
+        });
+      }
+
+      data.discountPercent = discountPercentNumber;
     }
 
     if (isActive !== undefined) {
-      data.isActive = Boolean(isActive);
+      if (typeof isActive !== "boolean") {
+        return res.status(400).json({
+          message: "isActive must be a boolean.",
+        });
+      }
+
+      data.isActive = isActive;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({
+        message: "No fields to update.",
+      });
     }
 
     const updatedMembership = await prisma.membership.update({
@@ -249,14 +303,11 @@ export const updateMembership = async (
   }
 };
 
-export const deleteMembership = async (
-  req: Request,
-  res: Response
-) => {
+export const deleteMembership = async (req: Request,res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid membership ID.",
       });

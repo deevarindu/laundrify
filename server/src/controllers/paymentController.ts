@@ -1,6 +1,5 @@
 import type { Request, Response } from "express";
-import { Prisma, PaymentMethod, PaymentStatus } from "@prisma/client";
-
+import { Prisma, PaymentMethod } from "@prisma/client";
 import prisma from "../lib/prisma.js";
 
 export const getAllPayments = async (req: Request, res: Response) => {
@@ -39,7 +38,7 @@ export const getPaymentById = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid payment ID.",
       });
@@ -83,39 +82,41 @@ export const getPaymentById = async (req: Request, res: Response) => {
 
 export const createPayment = async (req: Request, res: Response) => {
   try {
-    const {
-      orderId,
-      amount,
-      method,
-      paidAt,
-      receivedById,
-    } = req.body;
+    if (!req.user) {
+      return res.status(401).json({
+        message: "Authentication required.",
+      });
+    }
+
+    const {orderId, amount, method, paidAt} = req.body;
 
     const orderIdNumber = Number(orderId);
-    const receivedByIdNumber = Number(receivedById);
     const amountNumber = Number(amount);
 
-    if (Number.isNaN(orderIdNumber)) {
+    if (!Number.isInteger(orderIdNumber) || orderIdNumber <= 0) {
       return res.status(400).json({
         message: "Invalid order ID.",
       });
     }
 
-    if (Number.isNaN(receivedByIdNumber)) {
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
       return res.status(400).json({
-        message: "Invalid received by user ID.",
+        message: "Payment amount must be greater than 0.",
       });
     }
 
-    if (Number.isNaN(amountNumber) || amountNumber <= 0) {
+    if (!Object.values(PaymentMethod).includes(method)) {
       return res.status(400).json({
-        message: "Payment amount must be greater than 0.",
+        message: "Invalid payment method.",
       });
     }
 
     const order = await prisma.order.findUnique({
       where: {
         id: orderIdNumber,
+      },
+      include: {
+        payment: true,
       },
     });
 
@@ -125,33 +126,9 @@ export const createPayment = async (req: Request, res: Response) => {
       });
     }
 
-    if (order.paymentStatus === PaymentStatus.SUDAH_DIBAYAR) {
+    if (order.payment) {
       return res.status(409).json({
-        message: "This order has already been paid.",
-      });
-    }
-
-    const existingPayment = await prisma.payment.findUnique({
-      where: {
-        orderId: orderIdNumber,
-      },
-    });
-
-    if (existingPayment) {
-      return res.status(409).json({
-        message: "Payment for this order already exists.",
-      });
-    }
-
-    const receivedBy = await prisma.user.findUnique({
-      where: {
-        id: receivedByIdNumber,
-      },
-    });
-
-    if (!receivedBy) {
-      return res.status(404).json({
-        message: "Receiving user not found.",
+        message: "Order has already been paid.",
       });
     }
 
@@ -161,16 +138,30 @@ export const createPayment = async (req: Request, res: Response) => {
       });
     }
 
+    let paidAtDate: Date | undefined;
+
+    if (paidAt !== undefined) {
+      const parsedPaidAt = new Date(paidAt);
+
+      if (Number.isNaN(parsedPaidAt.getTime())) {
+        return res.status(400).json({
+          message: "Invalid payment date.",
+        });
+      }
+
+      paidAtDate = parsedPaidAt;
+    }
+
     const payment = await prisma.$transaction(async (tx) => {
       const newPayment = await tx.payment.create({
         data: {
           orderId: orderIdNumber,
           amount: amountNumber,
-          method: method as PaymentMethod,
-          ...(paidAt !== undefined && {
-            paidAt: new Date(paidAt),
+          method,
+          receivedById: req.user!.userId,
+          ...(paidAtDate !== undefined && {
+            paidAt: paidAtDate,
           }),
-          receivedById: receivedByIdNumber,
         },
         include: {
           order: true,
@@ -190,7 +181,7 @@ export const createPayment = async (req: Request, res: Response) => {
           id: orderIdNumber,
         },
         data: {
-          paymentStatus: PaymentStatus.SUDAH_DIBAYAR,
+          paymentStatus: "SUDAH_DIBAYAR",
         },
       });
 
@@ -198,7 +189,7 @@ export const createPayment = async (req: Request, res: Response) => {
     });
 
     return res.status(201).json({
-      message: "New payment successfully added.",
+      message: "Payment successfully recorded.",
       data: payment,
     });
   } catch (error) {
@@ -209,12 +200,12 @@ export const createPayment = async (req: Request, res: Response) => {
       error.code === "P2002"
     ) {
       return res.status(409).json({
-        message: "Payment for this order already exists.",
+        message: "Order has already been paid.",
       });
     }
 
     return res.status(500).json({
-      message: "Failed to add new payment.",
+      message: "Failed to create payment.",
     });
   }
 };
@@ -223,26 +214,17 @@ export const updatePayment = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid payment ID.",
       });
     }
 
-    const {
-      orderId,
-      amount,
-      method,
-      paidAt,
-      receivedById,
-    } = req.body;
+    const { method, paidAt } = req.body;
 
     const existingPayment = await prisma.payment.findUnique({
       where: {
         id,
-      },
-      include: {
-        order: true,
       },
     });
 
@@ -254,89 +236,38 @@ export const updatePayment = async (req: Request, res: Response) => {
 
     const data: Prisma.PaymentUpdateInput = {};
 
-    if (orderId !== undefined) {
-      const orderIdNumber = Number(orderId);
-
-      if (Number.isNaN(orderIdNumber)) {
-        return res.status(400).json({
-          message: "Invalid order ID.",
-        });
-      }
-
-      const order = await prisma.order.findUnique({
-        where: {
-          id: orderIdNumber,
-        },
-      });
-
-      if (!order) {
-        return res.status(404).json({
-          message: "Order not found.",
-        });
-      }
-
-      if (
-        order.paymentStatus === PaymentStatus.SUDAH_DIBAYAR &&
-        order.id !== existingPayment.orderId
-      ) {
-        return res.status(409).json({
-          message: "This order has already been paid.",
-        });
-      }
-
-      data.order = {
-        connect: {
-          id: orderIdNumber,
-        },
-      };
-    }
-
-    if (amount !== undefined) {
-      const amountNumber = Number(amount);
-
-      if (Number.isNaN(amountNumber) || amountNumber <= 0) {
-        return res.status(400).json({
-          message: "Payment amount must be greater than 0.",
-        });
-      }
-
-      data.amount = amountNumber;
-    }
-
     if (method !== undefined) {
-      data.method = method as PaymentMethod;
+      if (!Object.values(PaymentMethod).includes(method)) {
+        return res.status(400).json({
+          message: "Invalid payment method.",
+        });
+      }
+
+      data.method = method;
     }
 
     if (paidAt !== undefined) {
-      data.paidAt = paidAt ? new Date(paidAt) : new Date();
+      if (paidAt === null || paidAt === "") {
+        return res.status(400).json({
+          message: "Payment date cannot be empty.",
+        });
+      }
+
+      const parsedPaidAt = new Date(paidAt);
+
+      if (Number.isNaN(parsedPaidAt.getTime())) {
+        return res.status(400).json({
+          message: "Invalid payment date.",
+        });
+      }
+
+      data.paidAt = parsedPaidAt;
     }
 
-    if (receivedById !== undefined) {
-      const receivedByIdNumber = Number(receivedById);
-
-      if (Number.isNaN(receivedByIdNumber)) {
-        return res.status(400).json({
-          message: "Invalid received by user ID.",
-        });
-      }
-
-      const receivedBy = await prisma.user.findUnique({
-        where: {
-          id: receivedByIdNumber,
-        },
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({
+        message: "No fields to update.",
       });
-
-      if (!receivedBy) {
-        return res.status(404).json({
-          message: "Receiving user not found.",
-        });
-      }
-
-      data.receivedBy = {
-        connect: {
-          id: receivedByIdNumber,
-        },
-      };
     }
 
     const updatedPayment = await prisma.payment.update({
@@ -373,15 +304,6 @@ export const updatePayment = async (req: Request, res: Response) => {
       });
     }
 
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
-      return res.status(409).json({
-        message: "Payment for this order already exists.",
-      });
-    }
-
     return res.status(500).json({
       message: "Failed to update payment.",
     });
@@ -392,7 +314,7 @@ export const deletePayment = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
-    if (Number.isNaN(id)) {
+    if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid payment ID.",
       });
@@ -413,6 +335,12 @@ export const deletePayment = async (req: Request, res: Response) => {
       });
     }
 
+    if (payment.order.orderStatus === "SELESAI") {
+      return res.status(409).json({
+        message: "Payment cannot be deleted from a completed order.",
+      });
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.payment.delete({
         where: {
@@ -425,7 +353,7 @@ export const deletePayment = async (req: Request, res: Response) => {
           id: payment.orderId,
         },
         data: {
-          paymentStatus: PaymentStatus.BELUM_DIBAYAR,
+          paymentStatus: "BELUM_DIBAYAR",
         },
       });
     });

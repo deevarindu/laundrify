@@ -114,4 +114,4 @@ export const login = async (req: Request, res: Response) => {
       message: "Failed to login.",
     });
   }
-};7
+};

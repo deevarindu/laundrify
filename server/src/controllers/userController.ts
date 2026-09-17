@@ -6,6 +6,9 @@ import prisma from "../lib/prisma.js";
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
     const users = await prisma.user.findMany({
+      where: {
+        isActive: true,
+      },
       select: {
         id: true,
         name: true,
@@ -41,9 +44,10 @@ export const getUserById = async (req: Request, res: Response) => {
       });
     }
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.user.findFirst({
       where: {
         id,
+        isActive: true,
       },
       select: {
         id: true,
@@ -123,6 +127,19 @@ export const updateUser = async (req: Request, res: Response) => {
     if (!Number.isInteger(id) || id <= 0) {
       return res.status(400).json({
         message: "Invalid user ID.",
+      });
+    }
+
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        id,
+        isActive: true,
+      },
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({
+        message: "User not found.",
       });
     }
 
@@ -213,9 +230,25 @@ export const deleteUser = async (req: Request, res: Response) => {
       });
     }
 
-    await prisma.user.delete({
+    const existingUser = await prisma.user.findFirst({
       where: {
         id,
+        isActive: true,
+      },
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({
+        message: "User not found.",
+      });
+    }
+
+    await prisma.user.update({
+      where: {
+        id,
+      },
+      data: {
+        isActive: false,
       },
     });
 
@@ -224,25 +257,6 @@ export const deleteUser = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error(error);
-
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2025"
-    ) {
-      return res.status(404).json({
-        message: "User not found.",
-      });
-    }
-
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2003"
-    ) {
-      return res.status(409).json({
-        message:
-          "User cannot be deleted because they are still referenced by other data.",
-      });
-    }
 
     return res.status(500).json({
       message: "Failed to delete user.",

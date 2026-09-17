@@ -3,8 +3,21 @@ import prisma from "../lib/prisma.js";
 
 export const getAllOrderStatusHistories = async (req: Request, res: Response) => {
   try {
+    const query = res.locals.validatedQuery ?? {};
+
     const orderStatusHistories =
       await prisma.orderStatusHistory.findMany({
+        where: {
+          ...(query.orderId !== undefined && {
+            orderId: query.orderId,
+          }),
+          ...(query.status !== undefined && {
+            orderStatus: query.status,
+          }),
+          ...(query.changedById !== undefined && {
+            changedById: query.changedById,
+          }),
+        },
         include: {
           order: {
             include: {
@@ -37,6 +50,7 @@ export const getAllOrderStatusHistories = async (req: Request, res: Response) =>
     });
   } catch (error) {
     console.error(error);
+
     return res.status(500).json({
       message: "Failed to fetch order status histories.",
     });

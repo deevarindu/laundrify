@@ -17,6 +17,7 @@ model User {
   email        String   @unique
   passwordHash String
   role         Role
+  isActive     Boolean @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -37,6 +38,7 @@ model Customer {
   name      String
   phone     String
   address   String?
+  isActive  Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

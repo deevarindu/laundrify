@@ -4,7 +4,48 @@ import prisma from "../lib/prisma.js";
 
 export const getAllMemberships = async (req: Request, res: Response) => {
   try {
+    const q =
+      typeof req.query.q === "string"
+        ? req.query.q.trim()
+        : "";
+
+    const isActive =
+      typeof req.query.isActive === "boolean"
+        ? req.query.isActive
+        : undefined;
+
     const memberships = await prisma.membership.findMany({
+      where: {
+        ...(q && {
+          OR: [
+            {
+              memberCode: {
+                contains: q,
+                mode: "insensitive",
+              },
+            },
+            {
+              customer: {
+                name: {
+                  contains: q,
+                  mode: "insensitive",
+                },
+              },
+            },
+            {
+              customer: {
+                phone: {
+                  contains: q,
+                  mode: "insensitive",
+                },
+              },
+            },
+          ],
+        }),
+        ...(isActive !== undefined && {
+          isActive,
+        }),
+      },
       include: {
         customer: true,
       },
@@ -64,24 +105,11 @@ export const getMembershipById = async (req: Request, res: Response) => {
   }
 };
 
-export const createMembership = async (req: Request,res: Response) => {
+export const createMembership = async (req: Request, res: Response) => {
   try {
-    const { customerId, discountPercent } = req.body;
-
-    const customerIdNumber = Number(customerId);
-
-    if (
-      !Number.isInteger(customerIdNumber) ||
-      customerIdNumber <= 0
-    ) {
-      return res.status(400).json({
-        message: "Invalid customer ID.",
-      });
-    }
-
     const customer = await prisma.customer.findUnique({
       where: {
-        id: customerIdNumber,
+        id: req.body.customerId,
       },
     });
 
@@ -93,7 +121,7 @@ export const createMembership = async (req: Request,res: Response) => {
 
     const existingMembership = await prisma.membership.findUnique({
       where: {
-        customerId: customerIdNumber,
+        customerId: req.body.customerId,
       },
     });
 
@@ -103,33 +131,14 @@ export const createMembership = async (req: Request,res: Response) => {
       });
     }
 
-    const data: {
-      customerId: number;
-      memberCode: string;
-      discountPercent?: number;
-    } = {
-      customerId: customerIdNumber,
-      memberCode: `MBR-${Date.now()}`,
-    };
-
-    if (discountPercent !== undefined) {
-      const discountPercentNumber = Number(discountPercent);
-
-      if (
-        !Number.isFinite(discountPercentNumber) ||
-        discountPercentNumber < 0 ||
-        discountPercentNumber > 100
-      ) {
-        return res.status(400).json({
-          message: "Discount percent must be between 0 and 100.",
-        });
-      }
-
-      data.discountPercent = discountPercentNumber;
-    }
-
     const membership = await prisma.membership.create({
-      data,
+      data: {
+        customerId: req.body.customerId,
+        memberCode: `MBR-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        ...(req.body.discountPercent !== undefined && {
+          discountPercent: req.body.discountPercent,
+        }),
+      },
       include: {
         customer: true,
       },
@@ -157,7 +166,7 @@ export const createMembership = async (req: Request,res: Response) => {
   }
 };
 
-export const updateMembership = async (req: Request,res: Response) => {
+export const updateMembership = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
@@ -167,7 +176,11 @@ export const updateMembership = async (req: Request,res: Response) => {
       });
     }
 
-    const {customerId, discountPercent,isActive,} = req.body;
+    if (Object.keys(req.body).length === 0) {
+      return res.status(400).json({
+        message: "No fields to update.",
+      });
+    }
 
     const existingMembership = await prisma.membership.findUnique({
       where: {
@@ -181,27 +194,10 @@ export const updateMembership = async (req: Request,res: Response) => {
       });
     }
 
-    const data: {
-      customerId?: number;
-      discountPercent?: number;
-      isActive?: boolean;
-    } = {};
-
-    if (customerId !== undefined) {
-      const newCustomerId = Number(customerId);
-
-      if (
-        !Number.isInteger(newCustomerId) ||
-        newCustomerId <= 0
-      ) {
-        return res.status(400).json({
-          message: "Invalid customer ID.",
-        });
-      }
-
+    if (req.body.customerId !== undefined) {
       const customer = await prisma.customer.findUnique({
         where: {
-          id: newCustomerId,
+          id: req.body.customerId,
         },
       });
 
@@ -214,7 +210,7 @@ export const updateMembership = async (req: Request,res: Response) => {
       const existingCustomerMembership =
         await prisma.membership.findUnique({
           where: {
-            customerId: newCustomerId,
+            customerId: req.body.customerId,
           },
         });
 
@@ -226,47 +222,27 @@ export const updateMembership = async (req: Request,res: Response) => {
           message: "Customer already has a membership.",
         });
       }
-
-      data.customerId = newCustomerId;
-    }
-
-    if (discountPercent !== undefined) {
-      const discountPercentNumber = Number(discountPercent);
-
-      if (
-        !Number.isFinite(discountPercentNumber) ||
-        discountPercentNumber < 0 ||
-        discountPercentNumber > 100
-      ) {
-        return res.status(400).json({
-          message: "Discount percent must be between 0 and 100.",
-        });
-      }
-
-      data.discountPercent = discountPercentNumber;
-    }
-
-    if (isActive !== undefined) {
-      if (typeof isActive !== "boolean") {
-        return res.status(400).json({
-          message: "isActive must be a boolean.",
-        });
-      }
-
-      data.isActive = isActive;
-    }
-
-    if (Object.keys(data).length === 0) {
-      return res.status(400).json({
-        message: "No fields to update.",
-      });
     }
 
     const updatedMembership = await prisma.membership.update({
       where: {
         id,
       },
-      data,
+      data: {
+        ...(req.body.customerId !== undefined && {
+          customer: {
+            connect: {
+              id: req.body.customerId,
+            },
+          },
+        }),
+        ...(req.body.discountPercent !== undefined && {
+          discountPercent: req.body.discountPercent,
+        }),
+        ...(req.body.isActive !== undefined && {
+          isActive: req.body.isActive,
+        }),
+      },
       include: {
         customer: true,
       },
@@ -303,7 +279,7 @@ export const updateMembership = async (req: Request,res: Response) => {
   }
 };
 
-export const deleteMembership = async (req: Request,res: Response) => {
+export const deleteMembership = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 

@@ -1,5 +1,7 @@
 import type { Request, Response } from "express";
+
 import { Prisma, OrderStatus, PaymentStatus } from "@prisma/client";
+
 import prisma from "../lib/prisma.js";
 
 const statusTransitions: Record<OrderStatus, OrderStatus[]> = {
@@ -9,15 +11,12 @@ const statusTransitions: Record<OrderStatus, OrderStatus[]> = {
   ],
   DICUCI: [
     OrderStatus.DIKERINGKAN,
-    OrderStatus.DIBATALKAN,
   ],
   DIKERINGKAN: [
     OrderStatus.DISETRIKA,
-    OrderStatus.DIBATALKAN,
   ],
   DISETRIKA: [
     OrderStatus.SIAP_DIAMBIL,
-    OrderStatus.DIBATALKAN,
   ],
   SIAP_DIAMBIL: [
     OrderStatus.SELESAI,
@@ -28,7 +27,46 @@ const statusTransitions: Record<OrderStatus, OrderStatus[]> = {
 
 export const getAllOrders = async (req: Request, res: Response) => {
   try {
+    const query = res.locals.validatedQuery ?? {};
+    const q = query.q ?? "";
+    const orderStatus = query.orderStatus;
+    const paymentStatus = query.paymentStatus;
+
     const orders = await prisma.order.findMany({
+      where: {
+        ...(orderStatus !== undefined && {
+          orderStatus,
+        }),
+        ...(paymentStatus !== undefined && {
+          paymentStatus,
+        }),
+        ...(q && {
+          OR: [
+            {
+              orderCode: {
+                contains: q,
+                mode: "insensitive",
+              },
+            },
+            {
+              customer: {
+                name: {
+                  contains: q,
+                  mode: "insensitive",
+                },
+              },
+            },
+            {
+              customer: {
+                phone: {
+                  contains: q,
+                  mode: "insensitive",
+                },
+              },
+            },
+          ],
+        }),
+      },
       include: {
         customer: true,
         user: {
@@ -108,7 +146,18 @@ export const getOrderById = async (req: Request, res: Response) => {
             service: true,
           },
         },
-        payment: true,
+        payment: {
+          include: {
+            receivedBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              },
+            },
+          },
+        },
         orderStatusHistories: {
           include: {
             user: {
@@ -156,24 +205,9 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const { customerId, items, dueAt } = req.body;
 
-    const customerIdNumber = Number(customerId);
-    const createdById = req.user.userId;
-
-    if (!Number.isInteger(customerIdNumber) || customerIdNumber <= 0) {
-      return res.status(400).json({
-        message: "Invalid customer ID.",
-      });
-    }
-
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({
-        message: "Order must contain at least one item.",
-      });
-    }
-
     const customer = await prisma.customer.findUnique({
       where: {
-        id: customerIdNumber,
+        id: customerId,
       },
       include: {
         membership: true,
@@ -186,23 +220,19 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
-    const serviceIds = items.map((item) => Number(item.serviceId));
-
-    const hasInvalidServiceId = serviceIds.some(
-      (serviceId) => !Number.isInteger(serviceId) || serviceId <= 0
+    const serviceIds = items.map(
+      (item: {
+        serviceId: number;
+        quantity: number;
+      }) => item.serviceId
     );
-
-    if (hasInvalidServiceId) {
-      return res.status(400).json({
-        message: "Invalid service ID.",
-      });
-    }
 
     const uniqueServiceIds = new Set(serviceIds);
 
     if (uniqueServiceIds.size !== serviceIds.length) {
       return res.status(400).json({
-        message: "The same service cannot be added more than once.",
+        message:
+          "The same service cannot be added more than once.",
       });
     }
 
@@ -217,7 +247,8 @@ export const createOrder = async (req: Request, res: Response) => {
 
     if (services.length !== serviceIds.length) {
       return res.status(404).json({
-        message: "One or more services were not found or are inactive.",
+        message:
+          "One or more services were not found or are inactive.",
       });
     }
 
@@ -226,28 +257,19 @@ export const createOrder = async (req: Request, res: Response) => {
     let subtotal = new Prisma.Decimal(0);
 
     for (const item of items) {
-      const serviceId = Number(item.serviceId);
-      const quantity = Number(item.quantity);
-
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        return res.status(400).json({
-          message: "Quantity must be greater than 0.",
-        });
-      }
-
       const service = services.find(
-        (service) => service.id === serviceId
+        (service) => service.id === item.serviceId
       );
 
       if (!service) {
         return res.status(404).json({
-          message: `Service with ID ${serviceId} not found.`,
+          message: `Service with ID ${item.serviceId} not found.`,
         });
       }
 
       if (
         service.unit === "SATUAN" &&
-        !Number.isInteger(quantity)
+        !Number.isInteger(item.quantity)
       ) {
         return res.status(400).json({
           message: `Quantity for ${service.name} must be a whole number.`,
@@ -255,7 +277,7 @@ export const createOrder = async (req: Request, res: Response) => {
       }
 
       const priceSnapshot = service.price;
-      const itemSubtotal = priceSnapshot.mul(quantity);
+      const itemSubtotal = priceSnapshot.mul(item.quantity);
 
       subtotal = subtotal.plus(itemSubtotal);
 
@@ -265,7 +287,7 @@ export const createOrder = async (req: Request, res: Response) => {
             id: service.id,
           },
         },
-        quantity,
+        quantity: item.quantity,
         priceSnapshot,
         subtotal: itemSubtotal,
       });
@@ -284,53 +306,33 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const total = subtotal.minus(discount);
 
-    let dueAtDate: Date | undefined;
-
-    if (
-      dueAt !== undefined &&
-      dueAt !== null &&
-      dueAt !== ""
-    ) {
-      const parsedDueAt = new Date(dueAt);
-
-      if (Number.isNaN(parsedDueAt.getTime())) {
-        return res.status(400).json({
-          message: "Invalid due date.",
-        });
-      }
-
-      dueAtDate = parsedDueAt;
-    }
-
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
-          orderCode: `ORD-${Date.now()}`,
-          customerId: customerIdNumber,
-          createdById,
+          orderCode: `ORD-${Date.now()}-${Math.floor(
+            Math.random() * 1000
+          )}`,
+          customerId: customer.id,
+          createdById: req.user!.userId,
           orderStatus: OrderStatus.PESANAN_DITERIMA,
           paymentStatus: PaymentStatus.BELUM_DIBAYAR,
           subtotal,
           discount,
           total,
-
-          ...(dueAtDate !== undefined && {
-            dueAt: dueAtDate,
+          ...(dueAt !== undefined && {
+            dueAt,
           }),
-
           orderItems: {
             create: orderItems,
           },
-
           orderStatusHistories: {
             create: {
               orderStatus: OrderStatus.PESANAN_DITERIMA,
-              changedById: createdById,
+              changedById: req.user!.userId,
               note: "Order created.",
             },
           },
         },
-
         include: {
           customer: true,
           user: {
@@ -346,7 +348,18 @@ export const createOrder = async (req: Request, res: Response) => {
               service: true,
             },
           },
-          payment: true,
+          payment: {
+            include: {
+              receivedBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+            },
+          },
           orderStatusHistories: {
             include: {
               user: {
@@ -420,23 +433,16 @@ export const updateOrder = async (req: Request, res: Response) => {
       });
     }
 
-    const data: Prisma.OrderUpdateInput = {};
+    if (existingOrder.orderStatus === OrderStatus.DIBATALKAN) {
+      return res.status(409).json({
+        message: "Cancelled order cannot be modified.",
+      });
+    }
 
     if (customerId !== undefined) {
-      const customerIdNumber = Number(customerId);
-
-      if (
-        !Number.isInteger(customerIdNumber) ||
-        customerIdNumber <= 0
-      ) {
-        return res.status(400).json({
-          message: "Invalid customer ID.",
-        });
-      }
-
       const customer = await prisma.customer.findUnique({
         where: {
-          id: customerIdNumber,
+          id: customerId,
         },
       });
 
@@ -445,34 +451,29 @@ export const updateOrder = async (req: Request, res: Response) => {
           message: "Customer not found.",
         });
       }
+    }
 
+    if (
+      customerId === undefined &&
+      dueAt === undefined
+    ) {
+      return res.status(400).json({
+        message: "No fields to update.",
+      });
+    }
+
+    const data: Prisma.OrderUpdateInput = {};
+
+    if (customerId !== undefined) {
       data.customer = {
         connect: {
-          id: customerIdNumber,
+          id: customerId,
         },
       };
     }
 
     if (dueAt !== undefined) {
-      if (dueAt === null || dueAt === "") {
-        data.dueAt = null;
-      } else {
-        const parsedDueAt = new Date(dueAt);
-
-        if (Number.isNaN(parsedDueAt.getTime())) {
-          return res.status(400).json({
-            message: "Invalid due date.",
-          });
-        }
-
-        data.dueAt = parsedDueAt;
-      }
-    }
-
-    if (Object.keys(data).length === 0) {
-      return res.status(400).json({
-        message: "No fields to update.",
-      });
+      data.dueAt = dueAt;
     }
 
     const updatedOrder = await prisma.order.update({
@@ -480,6 +481,49 @@ export const updateOrder = async (req: Request, res: Response) => {
         id,
       },
       data,
+      include: {
+        customer: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+        orderItems: {
+          include: {
+            service: true,
+          },
+        },
+        payment: {
+          include: {
+            receivedBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              },
+            },
+          },
+        },
+        orderStatusHistories: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              },
+            },
+          },
+          orderBy: {
+            changedAt: "desc",
+          },
+        },
+      },
     });
 
     return res.status(200).json({
@@ -521,12 +565,6 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
-    if (!Object.values(OrderStatus).includes(status)) {
-      return res.status(400).json({
-        message: "Invalid order status.",
-      });
-    }
-
     const order = await prisma.order.findUnique({
       where: {
         id,
@@ -550,12 +588,13 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       order.paymentStatus !== PaymentStatus.SUDAH_DIBAYAR
     ) {
       return res.status(400).json({
-        message: "Order must be fully paid before it can be completed.",
+        message:
+          "Order must be fully paid before it can be completed.",
       });
     }
 
     const updatedOrder = await prisma.$transaction(async (tx) => {
-      const updated = await tx.order.update({
+      await tx.order.update({
         where: {
           id,
         },
@@ -573,7 +612,54 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
         },
       });
 
-      return updated;
+      return tx.order.findUnique({
+        where: {
+          id,
+        },
+        include: {
+          customer: true,
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          orderItems: {
+            include: {
+              service: true,
+            },
+          },
+          payment: {
+            include: {
+              receivedBy: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+            },
+          },
+          orderStatusHistories: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+            },
+            orderBy: {
+              changedAt: "desc",
+            },
+          },
+        },
+      });
     });
 
     return res.status(200).json({
@@ -617,6 +703,16 @@ export const deleteOrder = async (req: Request, res: Response) => {
     if (!existingOrder) {
       return res.status(404).json({
         message: "Order not found.",
+      });
+    }
+
+    if (
+      existingOrder.orderStatus !== OrderStatus.PESANAN_DITERIMA &&
+      existingOrder.orderStatus !== OrderStatus.DIBATALKAN
+    ) {
+      return res.status(409).json({
+        message:
+          "Order can only be deleted before processing or after cancellation.",
       });
     }
 

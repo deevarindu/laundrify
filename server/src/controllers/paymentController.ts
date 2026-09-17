@@ -88,32 +88,11 @@ export const createPayment = async (req: Request, res: Response) => {
       });
     }
 
-    const {orderId, amount, method, paidAt} = req.body;
-
-    const orderIdNumber = Number(orderId);
-    const amountNumber = Number(amount);
-
-    if (!Number.isInteger(orderIdNumber) || orderIdNumber <= 0) {
-      return res.status(400).json({
-        message: "Invalid order ID.",
-      });
-    }
-
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      return res.status(400).json({
-        message: "Payment amount must be greater than 0.",
-      });
-    }
-
-    if (!Object.values(PaymentMethod).includes(method)) {
-      return res.status(400).json({
-        message: "Invalid payment method.",
-      });
-    }
+    const { orderId, amount, method, paidAt } = req.body;
 
     const order = await prisma.order.findUnique({
       where: {
-        id: orderIdNumber,
+        id: orderId,
       },
       include: {
         payment: true,
@@ -126,41 +105,41 @@ export const createPayment = async (req: Request, res: Response) => {
       });
     }
 
+    if (order.orderStatus === "DIBATALKAN") {
+      return res.status(409).json({
+        message: "Cancelled order cannot be paid.",
+      });
+    }
+
     if (order.payment) {
       return res.status(409).json({
         message: "Order has already been paid.",
       });
     }
 
-    if (amountNumber !== Number(order.total)) {
+    if (amount !== Number(order.total)) {
       return res.status(400).json({
         message: "Payment amount must be equal to the order total.",
       });
     }
 
-    let paidAtDate: Date | undefined;
-
-    if (paidAt !== undefined) {
-      const parsedPaidAt = new Date(paidAt);
-
-      if (Number.isNaN(parsedPaidAt.getTime())) {
-        return res.status(400).json({
-          message: "Invalid payment date.",
-        });
-      }
-
-      paidAtDate = parsedPaidAt;
-    }
-
     const payment = await prisma.$transaction(async (tx) => {
       const newPayment = await tx.payment.create({
         data: {
-          orderId: orderIdNumber,
-          amount: amountNumber,
+          order: {
+            connect: {
+              id: order.id,
+            },
+          },
+          amount,
           method,
-          receivedById: req.user!.userId,
-          ...(paidAtDate !== undefined && {
-            paidAt: paidAtDate,
+          receivedBy: {
+            connect: {
+              id: req.user!.userId,
+            },
+          },
+          ...(paidAt !== undefined && {
+            paidAt,
           }),
         },
         include: {
@@ -178,7 +157,7 @@ export const createPayment = async (req: Request, res: Response) => {
 
       await tx.order.update({
         where: {
-          id: orderIdNumber,
+          id: order.id,
         },
         data: {
           paymentStatus: "SUDAH_DIBAYAR",
@@ -220,8 +199,6 @@ export const updatePayment = async (req: Request, res: Response) => {
       });
     }
 
-    const { method, paidAt } = req.body;
-
     const existingPayment = await prisma.payment.findUnique({
       where: {
         id,
@@ -234,40 +211,20 @@ export const updatePayment = async (req: Request, res: Response) => {
       });
     }
 
-    const data: Prisma.PaymentUpdateInput = {};
-
-    if (method !== undefined) {
-      if (!Object.values(PaymentMethod).includes(method)) {
-        return res.status(400).json({
-          message: "Invalid payment method.",
-        });
-      }
-
-      data.method = method;
-    }
-
-    if (paidAt !== undefined) {
-      if (paidAt === null || paidAt === "") {
-        return res.status(400).json({
-          message: "Payment date cannot be empty.",
-        });
-      }
-
-      const parsedPaidAt = new Date(paidAt);
-
-      if (Number.isNaN(parsedPaidAt.getTime())) {
-        return res.status(400).json({
-          message: "Invalid payment date.",
-        });
-      }
-
-      data.paidAt = parsedPaidAt;
-    }
-
-    if (Object.keys(data).length === 0) {
+    if (Object.keys(req.body).length === 0) {
       return res.status(400).json({
         message: "No fields to update.",
       });
+    }
+
+    const data: Prisma.PaymentUpdateInput = {};
+
+    if (req.body.method !== undefined) {
+      data.method = req.body.method;
+    }
+
+    if (req.body.paidAt !== undefined) {
+      data.paidAt = req.body.paidAt;
     }
 
     const updatedPayment = await prisma.payment.update({

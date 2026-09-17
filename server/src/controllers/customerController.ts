@@ -5,6 +5,9 @@ import prisma from "../lib/prisma.js";
 export const getAllCustomers = async (req: Request, res: Response) => {
   try {
     const customers = await prisma.customer.findMany({
+      where: {
+        isActive: true,
+      },
       orderBy: {
         createdAt: "desc",
       },
@@ -33,9 +36,10 @@ export const getCustomerById = async (req: Request, res: Response) => {
       });
     }
 
-    const customer = await prisma.customer.findUnique({
+    const customer = await prisma.customer.findFirst({
       where: {
         id,
+        isActive: true,
       },
       include: {
         membership: true,
@@ -96,6 +100,19 @@ export const updateCustomer = async (req: Request, res: Response) => {
       });
     }
 
+    const existingCustomer = await prisma.customer.findFirst({
+      where: {
+        id,
+        isActive: true,
+      },
+    });
+
+    if (!existingCustomer) {
+      return res.status(404).json({
+        message: "Customer not found.",
+      });
+    }
+
     const { name, phone, address } = req.body;
 
     const data: {
@@ -130,15 +147,6 @@ export const updateCustomer = async (req: Request, res: Response) => {
   } catch (error) {
     console.error(error);
 
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2025"
-    ) {
-      return res.status(404).json({
-        message: "Customer not found.",
-      });
-    }
-
     return res.status(500).json({
       message: "Failed to update customer.",
     });
@@ -155,9 +163,25 @@ export const deleteCustomer = async (req: Request, res: Response) => {
       });
     }
 
-    await prisma.customer.delete({
+    const existingCustomer = await prisma.customer.findFirst({
       where: {
         id,
+        isActive: true,
+      },
+    });
+
+    if (!existingCustomer) {
+      return res.status(404).json({
+        message: "Customer not found.",
+      });
+    }
+
+    await prisma.customer.update({
+      where: {
+        id,
+      },
+      data: {
+        isActive: false,
       },
     });
 
@@ -166,25 +190,6 @@ export const deleteCustomer = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error(error);
-
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2025"
-    ) {
-      return res.status(404).json({
-        message: "Customer not found.",
-      });
-    }
-
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2003"
-    ) {
-      return res.status(409).json({
-        message:
-          "Customer cannot be deleted because they are still referenced by other data.",
-      });
-    }
 
     return res.status(500).json({
       message: "Failed to delete customer.",

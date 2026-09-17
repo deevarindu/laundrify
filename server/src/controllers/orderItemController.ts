@@ -2,7 +2,10 @@ import type { Request, Response } from "express";
 import { Prisma } from "@prisma/client";
 import prisma from "../lib/prisma.js";
 
-const recalculateOrder = async (tx: Prisma.TransactionClient, orderId: number) => {
+const recalculateOrder = async (
+  tx: Prisma.TransactionClient,
+  orderId: number
+) => {
   const order = await tx.order.findUnique({
     where: {
       id: orderId,
@@ -56,31 +59,9 @@ export const createOrderItem = async (req: Request, res: Response) => {
   try {
     const { orderId, serviceId, quantity } = req.body;
 
-    const orderIdNumber = Number(orderId);
-    const serviceIdNumber = Number(serviceId);
-    const quantityNumber = Number(quantity);
-
-    if (!Number.isInteger(orderIdNumber) || orderIdNumber <= 0) {
-      return res.status(400).json({
-        message: "Invalid order ID.",
-      });
-    }
-
-    if (!Number.isInteger(serviceIdNumber) || serviceIdNumber <= 0) {
-      return res.status(400).json({
-        message: "Invalid service ID.",
-      });
-    }
-
-    if (!Number.isFinite(quantityNumber) || quantityNumber <= 0) {
-      return res.status(400).json({
-        message: "Quantity must be greater than 0.",
-      });
-    }
-
     const order = await prisma.order.findUnique({
       where: {
-        id: orderIdNumber,
+        id: orderId,
       },
     });
 
@@ -90,15 +71,24 @@ export const createOrderItem = async (req: Request, res: Response) => {
       });
     }
 
-    if (order.orderStatus === "SELESAI") {
+    if (
+      order.orderStatus === "SELESAI" ||
+      order.orderStatus === "DIBATALKAN"
+    ) {
       return res.status(409).json({
-        message: "Cannot modify items of a completed order.",
+        message: "Cannot modify items of this order.",
+      });
+    }
+
+    if (order.paymentStatus === "SUDAH_DIBAYAR") {
+      return res.status(409).json({
+        message: "Cannot modify items of a paid order.",
       });
     }
 
     const service = await prisma.service.findUnique({
       where: {
-        id: serviceIdNumber,
+        id: serviceId,
       },
     });
 
@@ -116,7 +106,7 @@ export const createOrderItem = async (req: Request, res: Response) => {
 
     if (
       service.unit === "SATUAN" &&
-      !Number.isInteger(quantityNumber)
+      !Number.isInteger(quantity)
     ) {
       return res.status(400).json({
         message: `Quantity for ${service.name} must be a whole number.`,
@@ -125,8 +115,8 @@ export const createOrderItem = async (req: Request, res: Response) => {
 
     const existingItem = await prisma.orderItem.findFirst({
       where: {
-        orderId: orderIdNumber,
-        serviceId: serviceIdNumber,
+        orderId,
+        serviceId,
       },
     });
 
@@ -137,14 +127,14 @@ export const createOrderItem = async (req: Request, res: Response) => {
     }
 
     const priceSnapshot = service.price;
-    const subtotal = priceSnapshot.mul(quantityNumber);
+    const subtotal = priceSnapshot.mul(quantity);
 
     const result = await prisma.$transaction(async (tx) => {
       const orderItem = await tx.orderItem.create({
         data: {
-          orderId: orderIdNumber,
-          serviceId: serviceIdNumber,
-          quantity: quantityNumber,
+          orderId,
+          serviceId,
+          quantity,
           priceSnapshot,
           subtotal,
         },
@@ -153,7 +143,7 @@ export const createOrderItem = async (req: Request, res: Response) => {
         },
       });
 
-      await recalculateOrder(tx, orderIdNumber);
+      await recalculateOrder(tx, orderId);
 
       return orderItem;
     });
@@ -165,9 +155,21 @@ export const createOrderItem = async (req: Request, res: Response) => {
   } catch (error) {
     console.error(error);
 
-    if (error instanceof Error && error.message === "ORDER_NOT_FOUND") {
+    if (
+      error instanceof Error &&
+      error.message === "ORDER_NOT_FOUND"
+    ) {
       return res.status(404).json({
         message: "Order not found.",
+      });
+    }
+
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return res.status(409).json({
+        message: "This service is already included in the order.",
       });
     }
 
@@ -213,65 +215,47 @@ export const updateOrderItem = async (req: Request, res: Response) => {
       });
     }
 
-    if (order.orderStatus === "SELESAI") {
+    if (
+      order.orderStatus === "SELESAI" ||
+      order.orderStatus === "DIBATALKAN"
+    ) {
       return res.status(409).json({
-        message: "Cannot modify items of a completed order.",
+        message: "Cannot modify items of this order.",
       });
     }
 
-    let selectedService = await prisma.service.findUnique({
-      where: {
-        id: existingOrderItem.serviceId,
-      },
-    });
+    if (order.paymentStatus === "SUDAH_DIBAYAR") {
+      return res.status(409).json({
+        message: "Cannot modify items of a paid order.",
+      });
+    }
 
     let serviceIdNumber = existingOrderItem.serviceId;
     let quantityNumber = Number(existingOrderItem.quantity);
 
     if (serviceId !== undefined) {
-      serviceIdNumber = Number(serviceId);
-
-      if (
-        !Number.isInteger(serviceIdNumber) ||
-        serviceIdNumber <= 0
-      ) {
-        return res.status(400).json({
-          message: "Invalid service ID.",
-        });
-      }
-
-      selectedService = await prisma.service.findUnique({
-        where: {
-          id: serviceIdNumber,
-        },
-      });
-
-      if (!selectedService) {
-        return res.status(404).json({
-          message: "Service not found.",
-        });
-      }
-
-      if (!selectedService.isActive) {
-        return res.status(400).json({
-          message: "Service is no longer active.",
-        });
-      }
+      serviceIdNumber = serviceId;
     }
 
     if (quantity !== undefined) {
-      quantityNumber = Number(quantity);
-
-      if (!Number.isFinite(quantityNumber) || quantityNumber <= 0) {
-        return res.status(400).json({
-          message: "Quantity must be greater than 0.",
-        });
-      }
+      quantityNumber = quantity;
     }
+
+    const selectedService = await prisma.service.findUnique({
+      where: {
+        id: serviceIdNumber,
+      },
+    });
 
     if (!selectedService) {
       return res.status(404).json({
         message: "Service not found.",
+      });
+    }
+
+    if (!selectedService.isActive) {
+      return res.status(400).json({
+        message: "Service is no longer active.",
       });
     }
 
@@ -284,7 +268,9 @@ export const updateOrderItem = async (req: Request, res: Response) => {
       });
     }
 
-    if (serviceIdNumber !== existingOrderItem.serviceId) {
+    if (
+      serviceIdNumber !== existingOrderItem.serviceId
+    ) {
       const duplicateItem = await prisma.orderItem.findFirst({
         where: {
           orderId: existingOrderItem.orderId,
@@ -321,7 +307,10 @@ export const updateOrderItem = async (req: Request, res: Response) => {
         },
       });
 
-      await recalculateOrder(tx, existingOrderItem.orderId);
+      await recalculateOrder(
+        tx,
+        existingOrderItem.orderId
+      );
 
       return updatedOrderItem;
     });
@@ -332,6 +321,15 @@ export const updateOrderItem = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error(error);
+
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      return res.status(404).json({
+        message: "Order item not found.",
+      });
+    }
 
     return res.status(500).json({
       message: "Failed to update order item.",
@@ -373,9 +371,18 @@ export const deleteOrderItem = async (req: Request, res: Response) => {
       });
     }
 
-    if (order.orderStatus === "SELESAI") {
+    if (
+      order.orderStatus === "SELESAI" ||
+      order.orderStatus === "DIBATALKAN"
+    ) {
       return res.status(409).json({
-        message: "Cannot modify items of a completed order.",
+        message: "Cannot modify items of this order.",
+      });
+    }
+
+    if (order.paymentStatus === "SUDAH_DIBAYAR") {
+      return res.status(409).json({
+        message: "Cannot modify items of a paid order.",
       });
     }
 
@@ -386,23 +393,10 @@ export const deleteOrderItem = async (req: Request, res: Response) => {
         },
       });
 
-      const remainingItems = await tx.orderItem.count({
-        where: {
-          orderId: orderItem.orderId,
-        },
-      });
-
-      if (remainingItems === 0) {
-        await tx.order.delete({
-          where: {
-            id: orderItem.orderId,
-          },
-        });
-
-        return;
-      }
-
-      await recalculateOrder(tx, orderItem.orderId);
+      await recalculateOrder(
+        tx,
+        orderItem.orderId
+      );
     });
 
     return res.status(200).json({

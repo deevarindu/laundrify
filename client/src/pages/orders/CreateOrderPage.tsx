@@ -459,7 +459,7 @@ const CreateOrderPage = () => {
                         : ""
                     );
                   }}
-                  itemToStringValue={(
+                  itemToStringLabel={(
                     customer
                   ) =>
                     customer

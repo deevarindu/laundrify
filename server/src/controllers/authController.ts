@@ -73,6 +73,12 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
+    if (!user.isActive) {
+      return res.status(403).json({
+        message: "Your account is inactive.",
+      });
+    }
+
     const isPasswordValid = await bcrypt.compare(
       password,
       user.passwordHash
@@ -103,6 +109,7 @@ export const login = async (req: Request, res: Response) => {
           name: user.name,
           email: user.email,
           role: user.role,
+          isActive: user.isActive,
         },
         token,
       },
@@ -136,12 +143,19 @@ export const getMe = async (req: Request, res: Response) => {
         name: true,
         email: true,
         role: true,
+        isActive: true,
       },
     });
 
     if (!user) {
       return res.status(404).json({
         message: "User not found.",
+      });
+    }
+
+    if (!user.isActive) {
+      return res.status(403).json({
+        message: "Your account is inactive.",
       });
     }
 

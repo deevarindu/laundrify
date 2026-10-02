@@ -8,6 +8,9 @@ export const getAllCustomers = async (req: Request, res: Response) => {
       where: {
         isActive: true,
       },
+      include: {
+        membership: true,
+      },
       orderBy: {
         createdAt: "desc",
       },

@@ -6,14 +6,12 @@ import prisma from "../lib/prisma.js";
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
     const users = await prisma.user.findMany({
-      where: {
-        isActive: true,
-      },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -28,6 +26,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error(error);
+
     return res.status(500).json({
       message: "Failed to fetch users.",
     });
@@ -44,16 +43,16 @@ export const getUserById = async (req: Request, res: Response) => {
       });
     }
 
-    const user = await prisma.user.findFirst({
+    const user = await prisma.user.findUnique({
       where: {
         id,
-        isActive: true,
       },
       select: {
         id: true,
         name: true,
         email: true,
         role: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
         orders: true,
@@ -82,7 +81,9 @@ export const getUserById = async (req: Request, res: Response) => {
 export const createUser = async (req: Request, res: Response) => {
   try {
     const { name, email, password, role } = req.body;
+
     const passwordHash = await bcrypt.hash(password, 10);
+
     const newUser = await prisma.user.create({
       data: {
         name,
@@ -95,6 +96,7 @@ export const createUser = async (req: Request, res: Response) => {
         name: true,
         email: true,
         role: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -106,6 +108,7 @@ export const createUser = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error(error);
+
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
@@ -114,6 +117,7 @@ export const createUser = async (req: Request, res: Response) => {
         message: "Email already exists.",
       });
     }
+
     return res.status(500).json({
       message: "Failed to create user.",
     });
@@ -184,6 +188,7 @@ export const updateUser = async (req: Request, res: Response) => {
         name: true,
         email: true,
         role: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
       },

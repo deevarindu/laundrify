@@ -1,50 +1,49 @@
 import type { Request, Response } from "express";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
 
 export const getAllMemberships = async (req: Request, res: Response) => {
   try {
-    const q =
-      typeof req.query.q === "string"
-        ? req.query.q.trim()
-        : "";
-
-    const isActive =
-      typeof req.query.isActive === "boolean"
-        ? req.query.isActive
-        : undefined;
+    const { q, isActive } = res.locals.validatedQuery as {
+      q?: string;
+      isActive?: boolean;
+    };
 
     const memberships = await prisma.membership.findMany({
       where: {
-        ...(q && {
-          OR: [
-            {
-              memberCode: {
-                contains: q,
-                mode: "insensitive",
-              },
-            },
-            {
-              customer: {
-                name: {
-                  contains: q,
-                  mode: "insensitive",
+        ...(q
+          ? {
+              OR: [
+                {
+                  memberCode: {
+                    contains: q,
+                    mode: "insensitive",
+                  },
                 },
-              },
-            },
-            {
-              customer: {
-                phone: {
-                  contains: q,
-                  mode: "insensitive",
+                {
+                  customer: {
+                    name: {
+                      contains: q,
+                      mode: "insensitive",
+                    },
+                  },
                 },
-              },
-            },
-          ],
-        }),
-        ...(isActive !== undefined && {
-          isActive,
-        }),
+                {
+                  customer: {
+                    phone: {
+                      contains: q,
+                      mode: "insensitive",
+                    },
+                  },
+                },
+              ],
+            }
+          : {}),
+        ...(isActive !== undefined
+          ? {
+              isActive,
+            }
+          : {}),
       },
       include: {
         customer: true,
@@ -107,21 +106,24 @@ export const getMembershipById = async (req: Request, res: Response) => {
 
 export const createMembership = async (req: Request, res: Response) => {
   try {
-    const customer = await prisma.customer.findUnique({
+    const { customerId, discountPercent } = req.body;
+
+    const customer = await prisma.customer.findFirst({
       where: {
-        id: req.body.customerId,
+        id: customerId,
+        isActive: true,
       },
     });
 
     if (!customer) {
       return res.status(404).json({
-        message: "Customer not found.",
+        message: "Active customer not found.",
       });
     }
 
     const existingMembership = await prisma.membership.findUnique({
       where: {
-        customerId: req.body.customerId,
+        customerId,
       },
     });
 
@@ -133,11 +135,13 @@ export const createMembership = async (req: Request, res: Response) => {
 
     const membership = await prisma.membership.create({
       data: {
-        customerId: req.body.customerId,
+        customerId,
         memberCode: `MBR-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        ...(req.body.discountPercent !== undefined && {
-          discountPercent: req.body.discountPercent,
-        }),
+        ...(discountPercent !== undefined
+          ? {
+              discountPercent,
+            }
+          : {}),
       },
       include: {
         customer: true,
@@ -156,7 +160,7 @@ export const createMembership = async (req: Request, res: Response) => {
       error.code === "P2002"
     ) {
       return res.status(409).json({
-        message: "Membership already exists for this customer.",
+        message: "Membership already exists.",
       });
     }
 
@@ -176,12 +180,6 @@ export const updateMembership = async (req: Request, res: Response) => {
       });
     }
 
-    if (Object.keys(req.body).length === 0) {
-      return res.status(400).json({
-        message: "No fields to update.",
-      });
-    }
-
     const existingMembership = await prisma.membership.findUnique({
       where: {
         id,
@@ -194,23 +192,40 @@ export const updateMembership = async (req: Request, res: Response) => {
       });
     }
 
-    if (req.body.customerId !== undefined) {
-      const customer = await prisma.customer.findUnique({
+    const {
+      customerId,
+      discountPercent,
+      isActive,
+    } = req.body;
+
+    if (
+      customerId === undefined &&
+      discountPercent === undefined &&
+      isActive === undefined
+    ) {
+      return res.status(400).json({
+        message: "No fields to update.",
+      });
+    }
+
+    if (customerId !== undefined) {
+      const customer = await prisma.customer.findFirst({
         where: {
-          id: req.body.customerId,
+          id: customerId,
+          isActive: true,
         },
       });
 
       if (!customer) {
         return res.status(404).json({
-          message: "Customer not found.",
+          message: "Active customer not found.",
         });
       }
 
       const existingCustomerMembership =
         await prisma.membership.findUnique({
           where: {
-            customerId: req.body.customerId,
+            customerId,
           },
         });
 
@@ -229,19 +244,25 @@ export const updateMembership = async (req: Request, res: Response) => {
         id,
       },
       data: {
-        ...(req.body.customerId !== undefined && {
-          customer: {
-            connect: {
-              id: req.body.customerId,
-            },
-          },
-        }),
-        ...(req.body.discountPercent !== undefined && {
-          discountPercent: req.body.discountPercent,
-        }),
-        ...(req.body.isActive !== undefined && {
-          isActive: req.body.isActive,
-        }),
+        ...(customerId !== undefined
+          ? {
+              customer: {
+                connect: {
+                  id: customerId,
+                },
+              },
+            }
+          : {}),
+        ...(discountPercent !== undefined
+          ? {
+              discountPercent,
+            }
+          : {}),
+        ...(isActive !== undefined
+          ? {
+              isActive,
+            }
+          : {}),
       },
       include: {
         customer: true,
@@ -301,14 +322,17 @@ export const deleteMembership = async (req: Request, res: Response) => {
       });
     }
 
-    await prisma.membership.delete({
+    await prisma.membership.update({
       where: {
         id,
+      },
+      data: {
+        isActive: false,
       },
     });
 
     return res.status(200).json({
-      message: "Membership deleted successfully.",
+      message: "Membership deactivated successfully.",
     });
   } catch (error) {
     console.error(error);
@@ -323,7 +347,7 @@ export const deleteMembership = async (req: Request, res: Response) => {
     }
 
     return res.status(500).json({
-      message: "Failed to delete membership.",
+      message: "Failed to deactivate membership.",
     });
   }
 };

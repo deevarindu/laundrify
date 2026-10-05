@@ -1,10 +1,8 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client-js"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "ts"
 }
 
 datasource db {
@@ -12,20 +10,18 @@ datasource db {
 }
 
 model User {
-  id           Int      @id @default(autoincrement())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role
-  isActive     Boolean @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  orders Order[]
-
-  orderStatusHistories OrderStatusHistory[]
-
-  paymentsReceived Payment[]
+  id                     Int                     @id @default(autoincrement())
+  name                   String
+  email                  String                  @unique
+  passwordHash           String
+  role                   Role
+  isActive               Boolean                 @default(true)
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  orders                 Order[]
+  orderStatusHistories   OrderStatusHistory[]
+  paymentsReceived       Payment[]
+  pickupDeliveryRequests PickupDeliveryRequest[]
 }
 
 enum Role {
@@ -34,17 +30,15 @@ enum Role {
 }
 
 model Customer {
-  id        Int      @id @default(autoincrement())
-  name      String
-  phone     String
-  address   String?
-  isActive  Boolean @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id         Int         @id @default(autoincrement())
+  name       String
+  phone      String      @unique
+  address    String?
+  isActive   Boolean     @default(true)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
   membership Membership?
-
-  orders Order[]
+  orders     Order[]
 }
 
 model Membership {
@@ -59,15 +53,14 @@ model Membership {
 }
 
 model Service {
-  id        Int             @id @default(autoincrement())
-  name      String
-  category  ServiceCategory
-  unit      ServiceUnit
-  price     Decimal
-  isActive  Boolean         @default(true)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-
+  id         Int             @id @default(autoincrement())
+  name       String
+  category   ServiceCategory
+  unit       ServiceUnit
+  price      Decimal         @db.Decimal(12, 2)
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
   orderItems OrderItem[]
 }
 
@@ -83,25 +76,22 @@ enum ServiceCategory {
 }
 
 model Order {
-  id            Int           @id @default(autoincrement())
-  orderCode     String        @unique
-  customerId    Int
-  customer      Customer      @relation(fields: [customerId], references: [id])
-  createdById   Int
-  user          User          @relation(fields: [createdById], references: [id])
-  orderStatus   OrderStatus   @default(PESANAN_DITERIMA)
-  paymentStatus PaymentStatus @default(BELUM_DIBAYAR)
-  subtotal      Decimal
-  discount      Decimal       @default(0)
-  total         Decimal
-  dueAt         DateTime?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-
-  orderItems OrderItem[]
-
-  payment Payment?
-
+  id                   Int                  @id @default(autoincrement())
+  orderCode            String               @unique
+  customerId           Int
+  customer             Customer             @relation(fields: [customerId], references: [id])
+  createdById          Int
+  user                 User                 @relation(fields: [createdById], references: [id])
+  orderStatus          OrderStatus          @default(PESANAN_DITERIMA)
+  paymentStatus        PaymentStatus        @default(BELUM_DIBAYAR)
+  subtotal             Decimal              @db.Decimal(12, 2)
+  discount             Decimal              @default(0) @db.Decimal(12, 2)
+  total                Decimal              @db.Decimal(12, 2)
+  dueAt                DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  orderItems           OrderItem[]
+  payment              Payment?
   orderStatusHistories OrderStatusHistory[]
 }
 
@@ -127,8 +117,8 @@ model OrderItem {
   serviceId     Int
   service       Service  @relation(fields: [serviceId], references: [id])
   quantity      Float
-  priceSnapshot Decimal
-  subtotal      Decimal
+  priceSnapshot Decimal  @db.Decimal(12, 2)
+  subtotal      Decimal  @db.Decimal(12, 2)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -137,7 +127,7 @@ model Payment {
   id           Int           @id @default(autoincrement())
   orderId      Int           @unique
   order        Order         @relation(fields: [orderId], references: [id])
-  amount       Decimal
+  amount       Decimal       @db.Decimal(12, 2)
   method       PaymentMethod
   paidAt       DateTime      @default(now())
   receivedById Int
@@ -159,4 +149,29 @@ model OrderStatusHistory {
   user        User        @relation(fields: [changedById], references: [id])
   changedAt   DateTime    @default(now())
   note        String?
+}
+
+model PickupDeliveryRequest {
+  id            Int                  @id @default(autoincrement())
+  name          String
+  phone         String
+  address       String
+  type          PickupDeliveryType
+  status        PickupDeliveryStatus @default(PENDING)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  processedAt   DateTime?
+  processedById Int?
+  processedBy   User?                @relation(fields: [processedById], references: [id])
+}
+
+enum PickupDeliveryType {
+  PICKUP
+  DELIVERY
+}
+
+enum PickupDeliveryStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }

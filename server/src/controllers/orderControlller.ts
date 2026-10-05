@@ -1,7 +1,9 @@
 import type { Request, Response } from "express";
-
-import { Prisma, OrderStatus, PaymentStatus } from "@prisma/client";
-
+import {
+  OrderStatus,
+  PaymentStatus,
+  Prisma,
+} from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
 
 const statusTransitions: Record<OrderStatus, OrderStatus[]> = {
@@ -9,20 +11,56 @@ const statusTransitions: Record<OrderStatus, OrderStatus[]> = {
     OrderStatus.DICUCI,
     OrderStatus.DIBATALKAN,
   ],
-  DICUCI: [
-    OrderStatus.DIKERINGKAN,
-  ],
-  DIKERINGKAN: [
-    OrderStatus.DISETRIKA,
-  ],
-  DISETRIKA: [
-    OrderStatus.SIAP_DIAMBIL,
-  ],
-  SIAP_DIAMBIL: [
-    OrderStatus.SELESAI,
-  ],
+  DICUCI: [OrderStatus.DIKERINGKAN],
+  DIKERINGKAN: [OrderStatus.DISETRIKA],
+  DISETRIKA: [OrderStatus.SIAP_DIAMBIL],
+  SIAP_DIAMBIL: [OrderStatus.SELESAI],
   SELESAI: [],
   DIBATALKAN: [],
+};
+
+const orderInclude = {
+  customer: true,
+  user: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+    },
+  },
+  orderItems: {
+    include: {
+      service: true,
+    },
+  },
+  payment: {
+    include: {
+      receivedBy: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+        },
+      },
+    },
+  },
+  orderStatusHistories: {
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+        },
+      },
+    },
+    orderBy: {
+      changedAt: "desc" as const,
+    },
+  },
 };
 
 export const getAllOrders = async (req: Request, res: Response) => {
@@ -67,38 +105,7 @@ export const getAllOrders = async (req: Request, res: Response) => {
           ],
         }),
       },
-      include: {
-        customer: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
-        orderItems: {
-          include: {
-            service: true,
-          },
-        },
-        payment: true,
-        orderStatusHistories: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-          },
-          orderBy: {
-            changedAt: "desc",
-          },
-        },
-      },
+      include: orderInclude,
       orderBy: {
         createdAt: "desc",
       },
@@ -131,49 +138,7 @@ export const getOrderById = async (req: Request, res: Response) => {
       where: {
         id,
       },
-      include: {
-        customer: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
-        orderItems: {
-          include: {
-            service: true,
-          },
-        },
-        payment: {
-          include: {
-            receivedBy: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-          },
-        },
-        orderStatusHistories: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-          },
-          orderBy: {
-            changedAt: "desc",
-          },
-        },
-      },
+      include: orderInclude,
     });
 
     if (!order) {
@@ -205,9 +170,10 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const { customerId, items, dueAt } = req.body;
 
-    const customer = await prisma.customer.findUnique({
+    const customer = await prisma.customer.findFirst({
       where: {
         id: customerId,
+        isActive: true,
       },
       include: {
         membership: true,
@@ -216,23 +182,20 @@ export const createOrder = async (req: Request, res: Response) => {
 
     if (!customer) {
       return res.status(404).json({
-        message: "Customer not found.",
+        message: "Active customer not found.",
       });
     }
 
     const serviceIds = items.map(
-      (item: {
-        serviceId: number;
-        quantity: number;
-      }) => item.serviceId
+      (item: { serviceId: number; quantity: number }) =>
+        item.serviceId
     );
 
     const uniqueServiceIds = new Set(serviceIds);
 
     if (uniqueServiceIds.size !== serviceIds.length) {
       return res.status(400).json({
-        message:
-          "The same service cannot be added more than once.",
+        message: "The same service cannot be added more than once.",
       });
     }
 
@@ -247,18 +210,16 @@ export const createOrder = async (req: Request, res: Response) => {
 
     if (services.length !== serviceIds.length) {
       return res.status(404).json({
-        message:
-          "One or more services were not found or are inactive.",
+        message: "One or more services were not found or are inactive.",
       });
     }
 
     const orderItems: Prisma.OrderItemCreateWithoutOrderInput[] = [];
-
     let subtotal = new Prisma.Decimal(0);
 
     for (const item of items) {
       const service = services.find(
-        (service) => service.id === item.serviceId
+        (currentService) => currentService.id === item.serviceId
       );
 
       if (!service) {
@@ -310,7 +271,7 @@ export const createOrder = async (req: Request, res: Response) => {
       const newOrder = await tx.order.create({
         data: {
           orderCode: `ORD-${Date.now()}-${Math.floor(
-            Math.random() * 1000
+            Math.random() * 100000
           )}`,
           customerId: customer.id,
           createdById: req.user!.userId,
@@ -333,49 +294,7 @@ export const createOrder = async (req: Request, res: Response) => {
             },
           },
         },
-        include: {
-          customer: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true,
-            },
-          },
-          orderItems: {
-            include: {
-              service: true,
-            },
-          },
-          payment: {
-            include: {
-              receivedBy: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-              },
-            },
-          },
-          orderStatusHistories: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-              },
-            },
-            orderBy: {
-              changedAt: "desc",
-            },
-          },
-        },
+        include: orderInclude,
       });
 
       return newOrder;
@@ -439,20 +358,6 @@ export const updateOrder = async (req: Request, res: Response) => {
       });
     }
 
-    if (customerId !== undefined) {
-      const customer = await prisma.customer.findUnique({
-        where: {
-          id: customerId,
-        },
-      });
-
-      if (!customer) {
-        return res.status(404).json({
-          message: "Customer not found.",
-        });
-      }
-    }
-
     if (
       customerId === undefined &&
       dueAt === undefined
@@ -460,6 +365,21 @@ export const updateOrder = async (req: Request, res: Response) => {
       return res.status(400).json({
         message: "No fields to update.",
       });
+    }
+
+    if (customerId !== undefined) {
+      const customer = await prisma.customer.findFirst({
+        where: {
+          id: customerId,
+          isActive: true,
+        },
+      });
+
+      if (!customer) {
+        return res.status(404).json({
+          message: "Active customer not found.",
+        });
+      }
     }
 
     const data: Prisma.OrderUpdateInput = {};
@@ -481,49 +401,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         id,
       },
       data,
-      include: {
-        customer: true,
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
-        },
-        orderItems: {
-          include: {
-            service: true,
-          },
-        },
-        payment: {
-          include: {
-            receivedBy: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-          },
-        },
-        orderStatusHistories: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                role: true,
-              },
-            },
-          },
-          orderBy: {
-            changedAt: "desc",
-          },
-        },
-      },
+      include: orderInclude,
     });
 
     return res.status(200).json({
@@ -548,7 +426,10 @@ export const updateOrder = async (req: Request, res: Response) => {
   }
 };
 
-export const updateOrderStatus = async (req: Request, res: Response) => {
+export const updateOrderStatus = async (
+  req: Request,
+  res: Response
+) => {
   try {
     if (!req.user) {
       return res.status(401).json({
@@ -593,74 +474,34 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
-    const updatedOrder = await prisma.$transaction(async (tx) => {
-      await tx.order.update({
-        where: {
-          id,
-        },
-        data: {
-          orderStatus: status,
-        },
-      });
+    const updatedOrder = await prisma.$transaction(
+      async (tx) => {
+        await tx.order.update({
+          where: {
+            id,
+          },
+          data: {
+            orderStatus: status,
+          },
+        });
 
-      await tx.orderStatusHistory.create({
-        data: {
-          orderId: id,
-          orderStatus: status,
-          changedById: req.user!.userId,
-          note: note ?? null,
-        },
-      });
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: id,
+            orderStatus: status,
+            changedById: req.user!.userId,
+            note: note ?? null,
+          },
+        });
 
-      return tx.order.findUnique({
-        where: {
-          id,
-        },
-        include: {
-          customer: true,
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true,
-            },
+        return tx.order.findUnique({
+          where: {
+            id,
           },
-          orderItems: {
-            include: {
-              service: true,
-            },
-          },
-          payment: {
-            include: {
-              receivedBy: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-              },
-            },
-          },
-          orderStatusHistories: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  email: true,
-                  role: true,
-                },
-              },
-            },
-            orderBy: {
-              changedAt: "desc",
-            },
-          },
-        },
-      });
-    });
+          include: orderInclude,
+        });
+      }
+    );
 
     return res.status(200).json({
       message: "Order status updated successfully.",
@@ -707,12 +548,21 @@ export const deleteOrder = async (req: Request, res: Response) => {
     }
 
     if (
-      existingOrder.orderStatus !== OrderStatus.PESANAN_DITERIMA &&
-      existingOrder.orderStatus !== OrderStatus.DIBATALKAN
+      existingOrder.orderStatus !==
+      OrderStatus.PESANAN_DITERIMA
     ) {
       return res.status(409).json({
         message:
-          "Order can only be deleted before processing or after cancellation.",
+          "Only orders that have not started processing can be deleted.",
+      });
+    }
+
+    if (
+      existingOrder.paymentStatus !==
+      PaymentStatus.BELUM_DIBAYAR
+    ) {
+      return res.status(409).json({
+        message: "Paid order cannot be deleted.",
       });
     }
 

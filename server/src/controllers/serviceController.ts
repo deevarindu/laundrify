@@ -1,10 +1,38 @@
 import type { Request, Response } from "express";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
 
 export const getAllServices = async (req: Request, res: Response) => {
   try {
+    const query = res.locals.validatedQuery as {
+      q?: string;
+      isActive?: boolean;
+      category?: "REGULER" | "EKSPRESS" | "KHUSUS";
+    };
+
+    const { q, isActive, category } = query;
+
     const services = await prisma.service.findMany({
+      where: {
+        ...(q
+          ? {
+              name: {
+                contains: q,
+                mode: "insensitive",
+              },
+            }
+          : {}),
+        ...(isActive !== undefined
+          ? {
+              isActive,
+            }
+          : {}),
+        ...(category
+          ? {
+              category,
+            }
+          : {}),
+      },
       orderBy: {
         createdAt: "desc",
       },
@@ -51,6 +79,7 @@ export const getServiceById = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error(error);
+
     return res.status(500).json({
       message: "Failed to fetch service.",
     });
@@ -59,14 +88,14 @@ export const getServiceById = async (req: Request, res: Response) => {
 
 export const createService = async (req: Request, res: Response) => {
   try {
-    const {name, category, unit, price, isActive} = req.body;
+    const { name, category, unit, price, isActive } = req.body;
 
     const newService = await prisma.service.create({
       data: {
         name,
         category,
         unit,
-        price: Number(price),
+        price,
         ...(isActive !== undefined && {
           isActive,
         }),
@@ -79,13 +108,14 @@ export const createService = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error(error);
+
     return res.status(500).json({
       message: "Failed to add new service.",
     });
   }
 };
 
-export const updateService = async (req: Request,res: Response) => {
+export const updateService = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
 
@@ -95,21 +125,21 @@ export const updateService = async (req: Request,res: Response) => {
       });
     }
 
-    const {
-      name,
-      category,
-      unit,
-      price,
-      isActive,
-    } = req.body;
+    const service = await prisma.service.findUnique({
+      where: {
+        id,
+      },
+    });
 
-    const data: {
-      name?: string;
-      category?: "REGULER" | "EKSPRESS" | "KHUSUS";
-      unit?: "KG" | "SATUAN";
-      price?: number;
-      isActive?: boolean;
-    } = {};
+    if (!service) {
+      return res.status(404).json({
+        message: "Service not found.",
+      });
+    }
+
+    const { name, category, unit, price, isActive } = req.body;
+
+    const data: Prisma.ServiceUpdateInput = {};
 
     if (name !== undefined) {
       data.name = name;
@@ -124,7 +154,7 @@ export const updateService = async (req: Request,res: Response) => {
     }
 
     if (price !== undefined) {
-      data.price = Number(price);
+      data.price = price;
     }
 
     if (isActive !== undefined) {
@@ -176,14 +206,36 @@ export const deleteService = async (req: Request, res: Response) => {
       });
     }
 
-    await prisma.service.delete({
+    const service = await prisma.service.findUnique({
       where: {
         id,
       },
     });
 
+    if (!service) {
+      return res.status(404).json({
+        message: "Service not found.",
+      });
+    }
+
+    if (!service.isActive) {
+      return res.status(409).json({
+        message: "Service is already inactive.",
+      });
+    }
+
+    const updatedService = await prisma.service.update({
+      where: {
+        id,
+      },
+      data: {
+        isActive: false,
+      },
+    });
+
     return res.status(200).json({
-      message: "Service deleted successfully.",
+      message: "Service deactivated successfully.",
+      data: updatedService,
     });
   } catch (error) {
     console.error(error);
@@ -197,18 +249,8 @@ export const deleteService = async (req: Request, res: Response) => {
       });
     }
 
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2003"
-    ) {
-      return res.status(409).json({
-        message:
-          "Service cannot be deleted because it is already used in an order.",
-      });
-    }
-
     return res.status(500).json({
-      message: "Failed to delete service.",
+      message: "Failed to deactivate service.",
     });
   }
 };

@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
 
 const recalculateOrder = async (
@@ -11,11 +11,6 @@ const recalculateOrder = async (
       id: orderId,
     },
     include: {
-      customer: {
-        include: {
-          membership: true,
-        },
-      },
       orderItems: true,
     },
   });
@@ -24,22 +19,28 @@ const recalculateOrder = async (
     throw new Error("ORDER_NOT_FOUND");
   }
 
+  if (order.orderItems.length === 0) {
+    throw new Error("ORDER_MUST_HAVE_ITEM");
+  }
+
   let subtotal = new Prisma.Decimal(0);
 
   for (const item of order.orderItems) {
     subtotal = subtotal.plus(item.subtotal);
   }
 
-  let discount = new Prisma.Decimal(0);
+  const previousSubtotal = order.subtotal;
+  let discountPercent = new Prisma.Decimal(0);
 
-  if (
-    order.customer.membership &&
-    order.customer.membership.isActive
-  ) {
-    discount = subtotal
-      .mul(order.customer.membership.discountPercent)
-      .div(100);
+  if (previousSubtotal.gt(0) && order.discount.gt(0)) {
+    discountPercent = order.discount
+      .mul(100)
+      .div(previousSubtotal);
   }
+
+  const discount = subtotal
+    .mul(discountPercent)
+    .div(100);
 
   const total = subtotal.minus(discount);
 
@@ -55,7 +56,10 @@ const recalculateOrder = async (
   });
 };
 
-export const createOrderItem = async (req: Request, res: Response) => {
+export const createOrderItem = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const { orderId, serviceId, quantity } = req.body;
 
@@ -179,7 +183,10 @@ export const createOrderItem = async (req: Request, res: Response) => {
   }
 };
 
-export const updateOrderItem = async (req: Request, res: Response) => {
+export const updateOrderItem = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const id = Number(req.params.id);
 
@@ -264,7 +271,8 @@ export const updateOrderItem = async (req: Request, res: Response) => {
       !Number.isInteger(quantityNumber)
     ) {
       return res.status(400).json({
-        message: `Quantity for ${selectedService.name} must be a whole number.`,
+        message:
+          `Quantity for ${selectedService.name} must be a whole number.`,
       });
     }
 
@@ -283,7 +291,8 @@ export const updateOrderItem = async (req: Request, res: Response) => {
 
       if (duplicateItem) {
         return res.status(409).json({
-          message: "This service is already included in the order.",
+          message:
+            "This service is already included in the order.",
         });
       }
     }
@@ -323,6 +332,15 @@ export const updateOrderItem = async (req: Request, res: Response) => {
     console.error(error);
 
     if (
+      error instanceof Error &&
+      error.message === "ORDER_MUST_HAVE_ITEM"
+    ) {
+      return res.status(400).json({
+        message: "Order must contain at least one item.",
+      });
+    }
+
+    if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2025"
     ) {
@@ -337,7 +355,10 @@ export const updateOrderItem = async (req: Request, res: Response) => {
   }
 };
 
-export const deleteOrderItem = async (req: Request, res: Response) => {
+export const deleteOrderItem = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const id = Number(req.params.id);
 
@@ -363,6 +384,13 @@ export const deleteOrderItem = async (req: Request, res: Response) => {
       where: {
         id: orderItem.orderId,
       },
+      include: {
+        _count: {
+          select: {
+            orderItems: true,
+          },
+        },
+      },
     });
 
     if (!order) {
@@ -383,6 +411,13 @@ export const deleteOrderItem = async (req: Request, res: Response) => {
     if (order.paymentStatus === "SUDAH_DIBAYAR") {
       return res.status(409).json({
         message: "Cannot modify items of a paid order.",
+      });
+    }
+
+    if (order._count.orderItems <= 1) {
+      return res.status(400).json({
+        message:
+          "Order must contain at least one item.",
       });
     }
 

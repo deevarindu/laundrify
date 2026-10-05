@@ -1,11 +1,45 @@
 import type { Request, Response } from "express";
 import bcrypt from "bcrypt";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
+    const query = res.locals.validatedQuery as {
+      q?: string;
+      role?: "ADMIN" | "STAFF";
+      isActive?: boolean;
+    };
+
+    const { q, role, isActive } = query;
+
     const users = await prisma.user.findMany({
+      where: {
+        ...(q
+          ? {
+              OR: [
+                {
+                  name: {
+                    contains: q,
+                    mode: "insensitive",
+                  },
+                },
+                {
+                  email: {
+                    contains: q,
+                    mode: "insensitive",
+                  },
+                },
+              ],
+            }
+          : {}),
+        ...(role !== undefined && {
+          role,
+        }),
+        ...(isActive !== undefined && {
+          isActive,
+        }),
+      },
       select: {
         id: true,
         name: true,
@@ -55,7 +89,11 @@ export const getUserById = async (req: Request, res: Response) => {
         isActive: true,
         createdAt: true,
         updatedAt: true,
-        orders: true,
+        orders: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
       },
     });
 
@@ -80,7 +118,7 @@ export const getUserById = async (req: Request, res: Response) => {
 
 export const createUser = async (req: Request, res: Response) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, isActive } = req.body;
 
     const passwordHash = await bcrypt.hash(password, 10);
 
@@ -90,6 +128,9 @@ export const createUser = async (req: Request, res: Response) => {
         email,
         passwordHash,
         role,
+        ...(isActive !== undefined && {
+          isActive,
+        }),
       },
       select: {
         id: true,
@@ -126,6 +167,12 @@ export const createUser = async (req: Request, res: Response) => {
 
 export const updateUser = async (req: Request, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({
+        message: "Authentication required.",
+      });
+    }
+
     const id = Number(req.params.id);
 
     if (!Number.isInteger(id) || id <= 0) {
@@ -134,10 +181,9 @@ export const updateUser = async (req: Request, res: Response) => {
       });
     }
 
-    const existingUser = await prisma.user.findFirst({
+    const existingUser = await prisma.user.findUnique({
       where: {
         id,
-        isActive: true,
       },
     });
 
@@ -147,14 +193,15 @@ export const updateUser = async (req: Request, res: Response) => {
       });
     }
 
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, isActive } = req.body;
 
-    const data: {
-      name?: string;
-      email?: string;
-      passwordHash?: string;
-      role?: "ADMIN" | "STAFF";
-    } = {};
+    if (id === req.user.userId && isActive === false) {
+      return res.status(409).json({
+        message: "You cannot deactivate your own account.",
+      });
+    }
+
+    const data: Prisma.UserUpdateInput = {};
 
     if (name !== undefined) {
       data.name = name;
@@ -170,6 +217,10 @@ export const updateUser = async (req: Request, res: Response) => {
 
     if (role !== undefined) {
       data.role = role;
+    }
+
+    if (isActive !== undefined) {
+      data.isActive = isActive;
     }
 
     if (Object.keys(data).length === 0) {
@@ -227,6 +278,12 @@ export const updateUser = async (req: Request, res: Response) => {
 
 export const deleteUser = async (req: Request, res: Response) => {
   try {
+    if (!req.user) {
+      return res.status(401).json({
+        message: "Authentication required.",
+      });
+    }
+
     const id = Number(req.params.id);
 
     if (!Number.isInteger(id) || id <= 0) {
@@ -235,16 +292,27 @@ export const deleteUser = async (req: Request, res: Response) => {
       });
     }
 
-    const existingUser = await prisma.user.findFirst({
+    if (id === req.user.userId) {
+      return res.status(409).json({
+        message: "You cannot deactivate your own account.",
+      });
+    }
+
+    const existingUser = await prisma.user.findUnique({
       where: {
         id,
-        isActive: true,
       },
     });
 
     if (!existingUser) {
       return res.status(404).json({
         message: "User not found.",
+      });
+    }
+
+    if (!existingUser.isActive) {
+      return res.status(409).json({
+        message: "User is already inactive.",
       });
     }
 
@@ -258,13 +326,22 @@ export const deleteUser = async (req: Request, res: Response) => {
     });
 
     return res.status(200).json({
-      message: "User deleted successfully.",
+      message: "User deactivated successfully.",
     });
   } catch (error) {
     console.error(error);
 
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      return res.status(404).json({
+        message: "User not found.",
+      });
+    }
+
     return res.status(500).json({
-      message: "Failed to delete user.",
+      message: "Failed to deactivate user.",
     });
   }
 };

@@ -11,7 +11,9 @@ if (!JWT_SECRET) {
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { name, email, password } = req.body;
+    const name = req.body.name;
+    const email = req.body.email.toLowerCase();
+    const password = req.body.password;
 
     const existingUser = await prisma.user.findUnique({
       where: {
@@ -39,6 +41,7 @@ export const register = async (req: Request, res: Response) => {
         name: true,
         email: true,
         role: true,
+        isActive: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -59,7 +62,8 @@ export const register = async (req: Request, res: Response) => {
 
 export const login = async (req: Request, res: Response) => {
   try {
-    const { email, password } = req.body;
+    const email = req.body.email.toLowerCase();
+    const password = req.body.password;
 
     const user = await prisma.user.findUnique({
       where: {
@@ -123,7 +127,6 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
-// agar tidak perlu menyimpan nama/email/role secara permanen di Secure Store (secure store cukup JWT)
 export const getMe = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.userId;

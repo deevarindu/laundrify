@@ -1,0 +1,212 @@
+import { Prisma } from "../generated/prisma/client.js";
+import prisma from "../lib/prisma.js";
+export const getAllServices = async (req, res) => {
+    try {
+        const query = res.locals.validatedQuery;
+        const { q, isActive, category } = query;
+        const services = await prisma.service.findMany({
+            where: {
+                ...(q
+                    ? {
+                        name: {
+                            contains: q,
+                            mode: "insensitive",
+                        },
+                    }
+                    : {}),
+                ...(isActive !== undefined
+                    ? {
+                        isActive,
+                    }
+                    : {}),
+                ...(category
+                    ? {
+                        category,
+                    }
+                    : {}),
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+        return res.status(200).json({
+            message: "Services fetched successfully.",
+            data: services,
+        });
+    }
+    catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            message: "Failed to fetch services.",
+        });
+    }
+};
+export const getServiceById = async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({
+                message: "Invalid service ID.",
+            });
+        }
+        const service = await prisma.service.findUnique({
+            where: {
+                id,
+            },
+        });
+        if (!service) {
+            return res.status(404).json({
+                message: "Service not found.",
+            });
+        }
+        return res.status(200).json({
+            message: "Service fetched successfully.",
+            data: service,
+        });
+    }
+    catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            message: "Failed to fetch service.",
+        });
+    }
+};
+export const createService = async (req, res) => {
+    try {
+        const { name, category, unit, price, isActive } = req.body;
+        const newService = await prisma.service.create({
+            data: {
+                name,
+                category,
+                unit,
+                price,
+                ...(isActive !== undefined && {
+                    isActive,
+                }),
+            },
+        });
+        return res.status(201).json({
+            message: "New service successfully added.",
+            data: newService,
+        });
+    }
+    catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            message: "Failed to add new service.",
+        });
+    }
+};
+export const updateService = async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({
+                message: "Invalid service ID.",
+            });
+        }
+        const service = await prisma.service.findUnique({
+            where: {
+                id,
+            },
+        });
+        if (!service) {
+            return res.status(404).json({
+                message: "Service not found.",
+            });
+        }
+        const { name, category, unit, price, isActive } = req.body;
+        const data = {};
+        if (name !== undefined) {
+            data.name = name;
+        }
+        if (category !== undefined) {
+            data.category = category;
+        }
+        if (unit !== undefined) {
+            data.unit = unit;
+        }
+        if (price !== undefined) {
+            data.price = price;
+        }
+        if (isActive !== undefined) {
+            data.isActive = isActive;
+        }
+        if (Object.keys(data).length === 0) {
+            return res.status(400).json({
+                message: "No fields to update.",
+            });
+        }
+        const updatedService = await prisma.service.update({
+            where: {
+                id,
+            },
+            data,
+        });
+        return res.status(200).json({
+            message: "Service updated successfully.",
+            data: updatedService,
+        });
+    }
+    catch (error) {
+        console.error(error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2025") {
+            return res.status(404).json({
+                message: "Service not found.",
+            });
+        }
+        return res.status(500).json({
+            message: "Failed to update service.",
+        });
+    }
+};
+export const deleteService = async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({
+                message: "Invalid service ID.",
+            });
+        }
+        const service = await prisma.service.findUnique({
+            where: {
+                id,
+            },
+        });
+        if (!service) {
+            return res.status(404).json({
+                message: "Service not found.",
+            });
+        }
+        if (!service.isActive) {
+            return res.status(409).json({
+                message: "Service is already inactive.",
+            });
+        }
+        const updatedService = await prisma.service.update({
+            where: {
+                id,
+            },
+            data: {
+                isActive: false,
+            },
+        });
+        return res.status(200).json({
+            message: "Service deactivated successfully.",
+            data: updatedService,
+        });
+    }
+    catch (error) {
+        console.error(error);
+        if (error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2025") {
+            return res.status(404).json({
+                message: "Service not found.",
+            });
+        }
+        return res.status(500).json({
+            message: "Failed to deactivate service.",
+        });
+    }
+};

@@ -1,9 +1,23 @@
 import type { Request, Response } from "express";
 import prisma from "../lib/prisma.js";
 
-export const getAllOrderStatusHistories = async (req: Request, res: Response) => {
+export const getAllOrderStatusHistories = async (
+  req: Request,
+  res: Response
+) => {
   try {
-    const query = res.locals.validatedQuery ?? {};
+    const query = res.locals.validatedQuery as {
+      orderId?: number;
+      status?:
+        | "PESANAN_DITERIMA"
+        | "DICUCI"
+        | "DIKERINGKAN"
+        | "DISETRIKA"
+        | "SIAP_DIAMBIL"
+        | "SELESAI"
+        | "DIBATALKAN";
+      changedById?: number;
+    };
 
     const orderStatusHistories =
       await prisma.orderStatusHistory.findMany({
@@ -57,7 +71,10 @@ export const getAllOrderStatusHistories = async (req: Request, res: Response) =>
   }
 };
 
-export const getOrderStatusHistoryById = async (req: Request, res: Response) => {
+export const getOrderStatusHistoryById = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const id = Number(req.params.id);
 

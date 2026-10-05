@@ -11,7 +11,7 @@ router.get('/', authenticate, authorize("ADMIN", "STAFF"), validateQuery(orderQu
 router.post('/', authenticate, authorize("ADMIN", "STAFF"), validateBody(orderCreateSchema), createOrder);
 router.patch('/:id/status', authenticate, authorize("ADMIN", "STAFF"), validateBody(orderStatusSchema), updateOrderStatus);
 router.get('/:id', authenticate, authorize("ADMIN", "STAFF"), getOrderById);
-router.patch('/:id', authenticate, authorize("ADMIN", "STAFF"), updateOrder);
+router.patch('/:id', authenticate, authorize("ADMIN", "STAFF"), validateBody(orderUpdateSchema), updateOrder);
 router.delete('/:id', authenticate, authorize("ADMIN", "STAFF"), deleteOrder);
 
 export default router;

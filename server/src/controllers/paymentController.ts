@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { Prisma, PaymentMethod } from "@prisma/client";
+import { Prisma } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
 
 export const getAllPayments = async (req: Request, res: Response) => {
@@ -111,13 +111,16 @@ export const createPayment = async (req: Request, res: Response) => {
       });
     }
 
-    if (order.payment) {
+    if (order.paymentStatus === "SUDAH_DIBAYAR" || order.payment) {
       return res.status(409).json({
         message: "Order has already been paid.",
       });
     }
 
-    if (amount !== Number(order.total)) {
+    const orderTotal = order.total.toString();
+    const paymentAmount = amount.toString();
+
+    if (paymentAmount !== orderTotal) {
       return res.status(400).json({
         message: "Payment amount must be equal to the order total.",
       });
@@ -183,6 +186,15 @@ export const createPayment = async (req: Request, res: Response) => {
       });
     }
 
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      return res.status(404).json({
+        message: "Order or user not found.",
+      });
+    }
+
     return res.status(500).json({
       message: "Failed to create payment.",
     });
@@ -203,6 +215,9 @@ export const updatePayment = async (req: Request, res: Response) => {
       where: {
         id,
       },
+      include: {
+        order: true,
+      },
     });
 
     if (!existingPayment) {
@@ -211,20 +226,28 @@ export const updatePayment = async (req: Request, res: Response) => {
       });
     }
 
-    if (Object.keys(req.body).length === 0) {
-      return res.status(400).json({
-        message: "No fields to update.",
+    if (existingPayment.order.orderStatus === "SELESAI") {
+      return res.status(409).json({
+        message: "Payment cannot be updated from a completed order.",
       });
     }
 
+    const { method, paidAt } = req.body;
+
     const data: Prisma.PaymentUpdateInput = {};
 
-    if (req.body.method !== undefined) {
-      data.method = req.body.method;
+    if (method !== undefined) {
+      data.method = method;
     }
 
-    if (req.body.paidAt !== undefined) {
-      data.paidAt = req.body.paidAt;
+    if (paidAt !== undefined) {
+      data.paidAt = paidAt;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({
+        message: "No fields to update.",
+      });
     }
 
     const updatedPayment = await prisma.payment.update({

@@ -10,6 +10,7 @@ import orderStatusHistoryRoute from "./orderStatusHistoryRoute.js";
 import authRoute from "./authRoute.js";
 import pickupDeliveryRoute from "./pickupDeliveryRoute.js";
 import trackingRoute from "./trackingRoute.js";
+import dashboardRoute from "./dashboardRoute.js";
 
 const router = Router();
 
@@ -22,6 +23,7 @@ router.use('/order', orderRoute);
 router.use('/payment', paymentRoute);
 router.use('/order-item', orderItemRoute);
 router.use('/order-status-history', orderStatusHistoryRoute);
+router.use('/dashboard', dashboardRoute);
 
 router.use('/pickup-delivery', pickupDeliveryRoute);
 router.use('/tracking', trackingRoute);

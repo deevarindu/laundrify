@@ -1,0 +1,15 @@
+import { Router } from "express";
+import { createPickupDeliveryRequest, getAllPickupDeliveryRequests, getPickupDeliveryRequestById, updatePickupDeliveryRequestStatus } from "../controllers/pickupDeliveryController.js";
+import { authenticate } from "../middleware/authMiddleware.js";
+import { authorize } from "../middleware/roleMiddleware.js";
+import { validateBody } from "../middleware/validate.js";
+import { pickupDeliveryCreateSchema, pickupDeliveryStatusUpdateSchema } from "../schemas/pickupDeliverySchema.js";
+
+const router = Router();
+
+router.get("/", authenticate, authorize("ADMIN", "STAFF"), getAllPickupDeliveryRequests);
+router.get("/:id", authenticate, authorize("ADMIN", "STAFF"), getPickupDeliveryRequestById);
+router.post("/", validateBody(pickupDeliveryCreateSchema), createPickupDeliveryRequest);
+router.patch("/:id/status", authenticate, authorize("ADMIN", "STAFF"), validateBody(pickupDeliveryStatusUpdateSchema), updatePickupDeliveryRequestStatus);
+
+export default router;

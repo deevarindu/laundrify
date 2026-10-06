@@ -8,7 +8,7 @@ import paymentRoute from "./paymentRoute.js";
 import orderItemRoute from "./orderItemRoute.js";
 import orderStatusHistoryRoute from "./orderStatusHistoryRoute.js";
 import authRoute from "./authRoute.js";
-import pickupDeliveryRequestRoute from "./pickupDeliveryRequestRoute.js";
+import pickupDeliveryRoute from "./pickupDeliveryRoute.js";
 
 const router = Router();
 
@@ -22,6 +22,6 @@ router.use('/payment', paymentRoute);
 router.use('/order-item', orderItemRoute);
 router.use('/order-status-history', orderStatusHistoryRoute);
 
-router.use('/pickup-delivery-request', pickupDeliveryRequestRoute);
+router.use('/pickup-delivery', pickupDeliveryRoute);
 
 export default router;

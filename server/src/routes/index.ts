@@ -9,6 +9,7 @@ import orderItemRoute from "./orderItemRoute.js";
 import orderStatusHistoryRoute from "./orderStatusHistoryRoute.js";
 import authRoute from "./authRoute.js";
 import pickupDeliveryRoute from "./pickupDeliveryRoute.js";
+import trackingRoute from "./trackingRoute.js";
 
 const router = Router();
 
@@ -23,5 +24,6 @@ router.use('/order-item', orderItemRoute);
 router.use('/order-status-history', orderStatusHistoryRoute);
 
 router.use('/pickup-delivery', pickupDeliveryRoute);
+router.use('/tracking', trackingRoute);
 
 export default router;

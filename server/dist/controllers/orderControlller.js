@@ -1,5 +1,6 @@
 import { OrderStatus, PaymentStatus, Prisma, } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
+import { emitOrderStatusChanged } from "../lib/socketEvent.js";
 const statusTransitions = {
     PESANAN_DITERIMA: [
         OrderStatus.DICUCI,
@@ -412,6 +413,12 @@ export const updateOrderStatus = async (req, res) => {
                 },
                 include: orderInclude,
             });
+        });
+        emitOrderStatusChanged({
+            id: updatedOrder.id,
+            orderCode: updatedOrder.orderCode,
+            orderStatus: updatedOrder.orderStatus,
+            paymentStatus: updatedOrder.paymentStatus
         });
         return res.status(200).json({
             message: "Order status updated successfully.",

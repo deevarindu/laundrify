@@ -1,5 +1,6 @@
 import { Prisma } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
+import { emitNewPickupDeliveryRequest } from "../lib/socketEvent.js";
 export const createPickupDeliveryRequest = async (req, res) => {
     try {
         const { name, phone, address, type } = req.body;
@@ -11,6 +12,7 @@ export const createPickupDeliveryRequest = async (req, res) => {
                 type,
             },
         });
+        emitNewPickupDeliveryRequest(request);
         return res.status(201).json({
             message: "Pickup/delivery request submitted successfully.",
             data: request,

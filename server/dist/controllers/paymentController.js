@@ -1,5 +1,6 @@
 import { Prisma } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
+import { emitPaymentStatusChanged } from "../lib/socketEvent.js";
 export const getAllPayments = async (req, res) => {
     try {
         const payments = await prisma.payment.findMany({
@@ -102,9 +103,8 @@ export const createPayment = async (req, res) => {
                 message: "Order has already been paid.",
             });
         }
-        const orderTotal = order.total.toString();
-        const paymentAmount = amount.toString();
-        if (paymentAmount !== orderTotal) {
+        const paymentAmount = new Prisma.Decimal(amount);
+        if (!paymentAmount.equals(order.total)) {
             return res.status(400).json({
                 message: "Payment amount must be equal to the order total.",
             });
@@ -117,7 +117,7 @@ export const createPayment = async (req, res) => {
                             id: order.id,
                         },
                     },
-                    amount,
+                    amount: paymentAmount,
                     method,
                     receivedBy: {
                         connect: {
@@ -149,6 +149,12 @@ export const createPayment = async (req, res) => {
                 },
             });
             return newPayment;
+        });
+        emitPaymentStatusChanged({
+            orderId: payment.orderId,
+            orderCode: payment.order.orderCode,
+            paymentStatus: "SUDAH_DIBAYAR",
+            payment,
         });
         return res.status(201).json({
             message: "Payment successfully recorded.",
@@ -288,6 +294,12 @@ export const deletePayment = async (req, res) => {
                     paymentStatus: "BELUM_DIBAYAR",
                 },
             });
+        });
+        emitPaymentStatusChanged({
+            orderId: payment.orderId,
+            orderCode: payment.order.orderCode,
+            paymentStatus: "BELUM_DIBAYAR",
+            payment: null,
         });
         return res.status(200).json({
             message: "Payment deleted successfully.",

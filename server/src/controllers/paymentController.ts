@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { Prisma } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
+import { emitPaymentStatusChanged } from "../lib/socketEvent.js";
 
 export const getAllPayments = async (req: Request, res: Response) => {
   try {
@@ -117,10 +118,9 @@ export const createPayment = async (req: Request, res: Response) => {
       });
     }
 
-    const orderTotal = order.total.toString();
-    const paymentAmount = amount.toString();
+    const paymentAmount = new Prisma.Decimal(amount);
 
-    if (paymentAmount !== orderTotal) {
+    if (!paymentAmount.equals(order.total)) {
       return res.status(400).json({
         message: "Payment amount must be equal to the order total.",
       });
@@ -134,7 +134,7 @@ export const createPayment = async (req: Request, res: Response) => {
               id: order.id,
             },
           },
-          amount,
+          amount: paymentAmount,
           method,
           receivedBy: {
             connect: {
@@ -168,6 +168,13 @@ export const createPayment = async (req: Request, res: Response) => {
       });
 
       return newPayment;
+    });
+
+    emitPaymentStatusChanged({
+      orderId: payment.orderId,
+      orderCode: payment.order.orderCode,
+      paymentStatus: "SUDAH_DIBAYAR",
+      payment,
     });
 
     return res.status(201).json({
@@ -336,6 +343,13 @@ export const deletePayment = async (req: Request, res: Response) => {
           paymentStatus: "BELUM_DIBAYAR",
         },
       });
+    });
+
+    emitPaymentStatusChanged({
+      orderId: payment.orderId,
+      orderCode: payment.order.orderCode,
+      paymentStatus: "BELUM_DIBAYAR",
+      payment: null,
     });
 
     return res.status(200).json({

@@ -11,6 +11,7 @@ import authRoute from "./authRoute.js";
 import pickupDeliveryRoute from "./pickupDeliveryRoute.js";
 import trackingRoute from "./trackingRoute.js";
 import dashboardRoute from "./dashboardRoute.js";
+import midtransRoute from "./midtransRoute.js";
 
 const router = Router();
 
@@ -27,5 +28,6 @@ router.use('/dashboard', dashboardRoute);
 
 router.use('/pickup-delivery', pickupDeliveryRoute);
 router.use('/tracking', trackingRoute);
+router.use("/midtrans", midtransRoute);
 
 export default router;

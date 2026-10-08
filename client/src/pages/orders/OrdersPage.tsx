@@ -1,47 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../lib/api";
-import type {
-  Customer,
-  Order,
-  Payment,
-} from "../../types";
-
+import type { Customer, Order } from "../../types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-
 import { Badge } from "@/components/ui/badge";
 
-type OrderStatusFilter =
-  | "ALL"
-  | Order["orderStatus"];
-
-type PaymentStatusFilter =
-  | "ALL"
-  | Order["paymentStatus"];
+type OrderStatusFilter = "ALL" | Order["orderStatus"];
+type PaymentStatusFilter = "ALL" | Order["paymentStatus"];
 
 const OrdersPage = () => {
   const navigate = useNavigate();
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-
   const [search, setSearch] = useState("");
-
   const [statusFilter, setStatusFilter] =
     useState<OrderStatusFilter>("ALL");
-
   const [paymentFilter, setPaymentFilter] =
     useState<PaymentStatusFilter>("ALL");
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -50,15 +33,11 @@ const OrdersPage = () => {
 
     const loadData = async () => {
       try {
-        const [
-          ordersResponse,
-          customersResponse,
-          paymentsResponse,
-        ] = await Promise.all([
-          api.get("/order"),
-          api.get("/customer"),
-          api.get("/payment"),
-        ]);
+        const [ordersResponse, customersResponse] =
+          await Promise.all([
+            api.get("/order"),
+            api.get("/customer"),
+          ]);
 
         if (cancelled) {
           return;
@@ -66,7 +45,6 @@ const OrdersPage = () => {
 
         setOrders(ordersResponse.data.data);
         setCustomers(customersResponse.data.data);
-        setPayments(paymentsResponse.data.data);
       } catch (error) {
         if (cancelled) {
           return;
@@ -96,12 +74,6 @@ const OrdersPage = () => {
       ])
     );
   }, [customers]);
-
-  const paymentOrderIds = useMemo(() => {
-    return new Set(
-      payments.map((payment) => payment.orderId)
-    );
-  }, [payments]);
 
   const filteredOrders = useMemo(() => {
     const normalizedSearch = search.toLowerCase();
@@ -416,9 +388,6 @@ const OrdersPage = () => {
                   customerMap.get(order.customerId) ??
                   "Unknown Customer";
 
-                const hasPayment =
-                  paymentOrderIds.has(order.id);
-
                 return (
                   <div
                     key={order.id}
@@ -473,12 +442,6 @@ const OrdersPage = () => {
                           <p className="text-sm font-semibold text-[#4B5141]">
                             {formatCurrency(order.total)}
                           </p>
-
-                          {hasPayment && (
-                            <p className="mt-0.5 text-right text-[11px] text-[#8B9A6E]">
-                              Payment recorded
-                            </p>
-                          )}
                         </div>
 
                         <Button

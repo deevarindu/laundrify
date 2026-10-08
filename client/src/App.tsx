@@ -16,6 +16,8 @@ import OrderDetailPage from "./pages/orders/OrderDetailPage";
 import PaymentsPage from "./pages/Payments/PaymentsPage";
 import HistoryPage from "./pages/histories/HistoryPage";
 import InvoicePage from "./pages/orders/InvoicePage";
+import PickupDeliveryPage from "./pages/pickup-delivery/PickupDeliveryPage";
+import PickupDeliveryRequestPage from "./pages/pickup-delivery/PickupDeliveryRequestPage";
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
@@ -43,6 +45,8 @@ const App = () => {
               <Route path="/orders/create" element={<CreateOrderPage />} />
               <Route path="/customers" element={<CustomersPage />} />
               <Route path="/customer/:id" element={<CustomerDetailPage />} />
+              <Route path="/pickup-delivery" element={<PickupDeliveryPage />}/>
+              <Route path="/request" element={<PickupDeliveryRequestPage />}/>
 
               <Route path="/services" element={
                 <AdminRoute>

@@ -1,7 +1,10 @@
 import type { Request, Response } from "express";
 import { Prisma } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
-import { emitNewPickupDeliveryRequest } from "../lib/socketEvent.js";
+import {
+  emitNewPickupDeliveryRequest,
+  emitPickupDeliveryStatusChanged,
+} from "../lib/socketEvent.js";
 
 export const createPickupDeliveryRequest = async (
   req: Request,
@@ -39,21 +42,22 @@ export const getAllPickupDeliveryRequests = async (
   res: Response
 ) => {
   try {
-    const requests = await prisma.pickupDeliveryRequest.findMany({
-      include: {
-        processedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
+    const requests =
+      await prisma.pickupDeliveryRequest.findMany({
+        include: {
+          processedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
 
     return res.status(200).json({
       message: "Pickup/delivery requests fetched successfully.",
@@ -81,21 +85,22 @@ export const getPickupDeliveryRequestById = async (
       });
     }
 
-    const request = await prisma.pickupDeliveryRequest.findUnique({
-      where: {
-        id,
-      },
-      include: {
-        processedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
+    const request =
+      await prisma.pickupDeliveryRequest.findUnique({
+        where: {
+          id,
+        },
+        include: {
+          processedBy: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
           },
         },
-      },
-    });
+      });
 
     if (!request) {
       return res.status(404).json({
@@ -137,11 +142,12 @@ export const updatePickupDeliveryRequestStatus = async (
 
     const { status } = req.body;
 
-    const request = await prisma.pickupDeliveryRequest.findUnique({
-      where: {
-        id,
-      },
-    });
+    const request =
+      await prisma.pickupDeliveryRequest.findUnique({
+        where: {
+          id,
+        },
+      });
 
     if (!request) {
       return res.status(404).json({
@@ -166,7 +172,19 @@ export const updatePickupDeliveryRequestStatus = async (
             processedAt: new Date(),
             processedById: req.user.userId,
           },
+          include: {
+            processedBy: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+              },
+            },
+          },
         });
+
+      emitPickupDeliveryStatusChanged(updatedRequest);
 
       return res.status(200).json({
         message: "Pickup/delivery request rejected.",
@@ -177,40 +195,57 @@ export const updatePickupDeliveryRequestStatus = async (
     }
 
     if (status === "ACCEPTED") {
-      const result = await prisma.$transaction(async (tx) => {
-        let customer = await tx.customer.findUnique({
-          where: {
-            phone: request.phone,
-          },
-        });
+      const result = await prisma.$transaction(
+        async (tx) => {
+          let customer =
+            await tx.customer.findUnique({
+              where: {
+                phone: request.phone,
+              },
+            });
 
-        if (!customer) {
-          customer = await tx.customer.create({
-            data: {
-              name: request.name,
-              phone: request.phone,
-              address: request.address,
-            },
-          });
+          if (!customer) {
+            customer = await tx.customer.create({
+              data: {
+                name: request.name,
+                phone: request.phone,
+                address: request.address,
+              },
+            });
+          }
+
+          const updatedRequest =
+            await tx.pickupDeliveryRequest.update({
+              where: {
+                id,
+              },
+              data: {
+                status: "ACCEPTED",
+                processedAt: new Date(),
+                processedById: req.user!.userId,
+              },
+              include: {
+                processedBy: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                  },
+                },
+              },
+            });
+
+          return {
+            request: updatedRequest,
+            customer,
+          };
         }
+      );
 
-        const updatedRequest =
-          await tx.pickupDeliveryRequest.update({
-            where: {
-              id,
-            },
-            data: {
-              status: "ACCEPTED",
-              processedAt: new Date(),
-              processedById: req.user!.userId,
-            },
-          });
-
-        return {
-          request: updatedRequest,
-          customer,
-        };
-      });
+      emitPickupDeliveryStatusChanged(
+        result.request
+      );
 
       return res.status(200).json({
         message:
@@ -230,19 +265,22 @@ export const updatePickupDeliveryRequestStatus = async (
     ) {
       if (error.code === "P2002") {
         return res.status(409).json({
-          message: "A customer with this phone number already exists.",
+          message:
+            "A customer with this phone number already exists.",
         });
       }
 
       if (error.code === "P2025") {
         return res.status(404).json({
-          message: "Pickup/delivery request not found.",
+          message:
+            "Pickup/delivery request not found.",
         });
       }
     }
 
     return res.status(500).json({
-      message: "Failed to update pickup/delivery request.",
+      message:
+        "Failed to update pickup/delivery request.",
     });
   }
 };

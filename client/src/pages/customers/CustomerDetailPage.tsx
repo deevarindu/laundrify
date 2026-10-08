@@ -379,7 +379,7 @@ const CustomerDetailPage = () => {
                   key={order.id}
                   type="button"
                   onClick={() =>
-                    navigate(`/orders/${order.id}`)
+                    navigate(`/order/${order.id}`)
                   }
                   className="flex w-full flex-col gap-4 rounded-2xl border border-[#E2DDD5] bg-[#FDFCFA] p-5 text-left transition-colors hover:border-[#C8D0B7] hover:bg-[#FAF8F4] md:flex-row md:items-center md:justify-between"
                 >

@@ -193,7 +193,7 @@ const InvoicePage = () => {
             variant="outline"
             onClick={() =>
               navigate(
-                `/orders/${order.id}`
+                `/order/${order.id}`
               )
             }
             className="border-[#D8D2C9] bg-white text-[#4B5141] hover:bg-[#EAE2D6]"
@@ -262,7 +262,7 @@ const InvoicePage = () => {
               )}
             </div>
 
-            <div sm:text-right="">
+            <div className="sm:text-right">
               <p className="text-xs font-medium uppercase tracking-wider text-[#8A8D84]">
                 Order Information
               </p>

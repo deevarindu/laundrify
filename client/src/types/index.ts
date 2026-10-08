@@ -1,3 +1,4 @@
+export type { PickupDeliveryRequest, PickupDeliveryStatus,PickupDeliveryType } from "./pickupDeliveryRequest";
 export type { Role, User } from "./user";
 export type { Customer } from "./customer";
 export type { Membership } from "./membership";

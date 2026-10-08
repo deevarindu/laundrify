@@ -376,7 +376,7 @@ const CreateOrderPage = () => {
         response.data.data;
 
       navigate(
-        `/orders/${createdOrder.id}`
+        `/order/${createdOrder.id}`
       );
     } catch (error) {
       console.error(error);

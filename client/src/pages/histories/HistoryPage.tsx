@@ -612,7 +612,7 @@ const HistoryPage = () => {
                             size="sm"
                             onClick={() =>
                               navigate(
-                                `/orders/${order.id}`
+                                `/order/${order.id}`
                               )
                             }
                             className="h-8 border-[#C8D0B7] bg-[#F0F2E9] px-3 text-xs text-[#4B5141] hover:bg-[#E0E7D5]"

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import api from "../lib/api";
 import type {
   OrderWithRelations,
-  Payment,
   Service,
 } from "../types";
 
@@ -31,10 +30,19 @@ const statusLabels = {
   DIBATALKAN: "Cancelled",
 } as const;
 
+type DashboardStats = {
+  activeOrders: number;
+  processing: number;
+  ready: number;
+  unpaid: number;
+  todayRevenue: number | string;
+};
+
 const DashboardPage = () => {
   const [orders, setOrders] = useState<OrderWithRelations[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [dashboardStats, setDashboardStats] =
+    useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -44,12 +52,12 @@ const DashboardPage = () => {
     const loadDashboard = async () => {
       try {
         const [
+          dashboardResponse,
           ordersResponse,
-          paymentsResponse,
           servicesResponse,
         ] = await Promise.all([
+          api.get("/dashboard"),
           api.get("/order"),
-          api.get("/payment"),
           api.get("/service"),
         ]);
 
@@ -57,8 +65,8 @@ const DashboardPage = () => {
           return;
         }
 
+        setDashboardStats(dashboardResponse.data.data);
         setOrders(ordersResponse.data.data);
-        setPayments(paymentsResponse.data.data);
         setServices(servicesResponse.data.data);
       } catch (error) {
         if (cancelled) {
@@ -80,36 +88,6 @@ const DashboardPage = () => {
       cancelled = true;
     };
   }, []);
-
-  const activeOrders = useMemo(() => {
-    return orders.filter(
-      (order) =>
-        order.orderStatus !== "SELESAI" &&
-        order.orderStatus !== "DIBATALKAN"
-    );
-  }, [orders]);
-
-  const processingOrders = useMemo(() => {
-    return orders.filter((order) =>
-      [
-        "DICUCI",
-        "DIKERINGKAN",
-        "DISETRIKA",
-      ].includes(order.orderStatus)
-    );
-  }, [orders]);
-
-  const readyOrders = useMemo(() => {
-    return orders.filter(
-      (order) => order.orderStatus === "SIAP_DIAMBIL"
-    );
-  }, [orders]);
-
-  const unpaidOrders = useMemo(() => {
-    return orders.filter(
-      (order) => order.paymentStatus === "BELUM_DIBAYAR"
-    );
-  }, [orders]);
 
   const statusCounts = useMemo(() => {
     return {
@@ -138,25 +116,6 @@ const DashboardPage = () => {
       ).length,
     };
   }, [orders]);
-
-  const todayRevenue = useMemo(() => {
-    const today = new Date();
-
-    return payments
-      .filter((payment) => {
-        const paidAt = new Date(payment.paidAt);
-
-        return (
-          paidAt.getFullYear() === today.getFullYear() &&
-          paidAt.getMonth() === today.getMonth() &&
-          paidAt.getDate() === today.getDate()
-        );
-      })
-      .reduce(
-        (total, payment) => total + Number(payment.amount),
-        0
-      );
-  }, [payments]);
 
   const bestSellers = useMemo(() => {
     const categories = [
@@ -238,27 +197,29 @@ const DashboardPage = () => {
   const summaryCards = [
     {
       title: "Active Orders",
-      value: activeOrders.length,
+      value: dashboardStats?.activeOrders ?? 0,
       style: "bg-[#E7ECDD]",
     },
     {
       title: "Processing",
-      value: processingOrders.length,
+      value: dashboardStats?.processing ?? 0,
       style: "bg-[#EAE2D6]",
     },
     {
       title: "Ready",
-      value: readyOrders.length,
+      value: dashboardStats?.ready ?? 0,
       style: "bg-[#E0E7D5]",
     },
     {
       title: "Unpaid",
-      value: unpaidOrders.length,
+      value: dashboardStats?.unpaid ?? 0,
       style: "bg-[#EDE8E0]",
     },
     {
       title: "Today Revenue",
-      value: formatCurrency(todayRevenue),
+      value: formatCurrency(
+        dashboardStats?.todayRevenue ?? 0
+      ),
       style: "bg-[#8B9A6E] text-white",
     },
   ];

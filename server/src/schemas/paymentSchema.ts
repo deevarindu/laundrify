@@ -15,7 +15,11 @@ export const paymentCreateSchema = z.object({
   ]),
   paidAt: z.preprocess(
     (value) => {
-      if (value === undefined || value === null || value === "") {
+      if (
+        value === undefined ||
+        value === null ||
+        value === ""
+      ) {
         return undefined;
       }
 
@@ -39,6 +43,6 @@ export const paymentUpdateSchema = z.object({
 
       return value;
     },
-    z.coerce.date()
-  ).optional(),
+    z.coerce.date().optional()
+  ),
 });

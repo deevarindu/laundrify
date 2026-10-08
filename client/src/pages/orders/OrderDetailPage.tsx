@@ -4,7 +4,6 @@ import {
   useState,
   type FormEvent,
 } from "react";
-
 import { useNavigate, useParams } from "react-router-dom";
 import api from "@/lib/api";
 import type {
@@ -21,7 +20,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-
 import {
   Dialog,
   DialogContent,
@@ -42,12 +40,12 @@ type PaymentDetail = {
   amount: number | string;
   method: PaymentMethod;
   paidAt: string;
-  receivedById: number;
+  receivedById: number | null;
   receivedBy?: {
     id: number;
     name: string;
     email: string;
-  };
+  } | null;
 };
 
 type OrderItemDetail = {
@@ -119,7 +117,6 @@ const paymentMethods: PaymentMethod[] = [
 
 const OrderDetailPage = () => {
   const { id } = useParams();
-
   const navigate = useNavigate();
 
   const orderId = Number(id);
@@ -156,6 +153,14 @@ const OrderDetailPage = () => {
 
   const [actionError, setActionError] =
     useState("");
+
+  const loadOrder = async () => {
+    const response = await api.get(
+      `/order/${orderId}`
+    );
+
+    setOrder(response.data.data);
+  };
 
   useEffect(() => {
     if (!validOrderId) {
@@ -223,7 +228,11 @@ const OrderDetailPage = () => {
     !!order &&
     !!nextStatus &&
     order.orderStatus !== "DIBATALKAN" &&
-    order.orderStatus !== "SELESAI";
+    order.orderStatus !== "SELESAI" &&
+    !(
+      order.orderStatus === "SIAP_DIAMBIL" &&
+      order.paymentStatus !== "SUDAH_DIBAYAR"
+    );
 
   const canRecordPayment =
     !!order &&
@@ -289,15 +298,14 @@ const OrderDetailPage = () => {
         setStatusSubmitting(true);
         setActionError("");
 
-        const response =
-          await api.patch(
-            `/order/${order.id}/status`,
-            {
-              status: nextStatus,
-            }
-          );
+        await api.patch(
+          `/order/${order.id}/status`,
+          {
+            status: nextStatus,
+          }
+        );
 
-        setOrder(response.data.data);
+        await loadOrder();
       } catch (error) {
         console.error(error);
 
@@ -323,16 +331,15 @@ const OrderDetailPage = () => {
         setStatusSubmitting(true);
         setActionError("");
 
-        const response =
-          await api.patch(
-            `/order/${order.id}/status`,
-            {
-              status: "DIBATALKAN",
-              note: "Order cancelled.",
-            }
-          );
+        await api.patch(
+          `/order/${order.id}/status`,
+          {
+            status: "DIBATALKAN",
+            note: "Order cancelled.",
+          }
+        );
 
-        setOrder(response.data.data);
+        await loadOrder();
       } catch (error) {
         console.error(error);
 
@@ -350,7 +357,10 @@ const OrderDetailPage = () => {
     ) => {
       event.preventDefault();
 
-      if (!order) {
+      if (
+        !order ||
+        !canRecordPayment
+      ) {
         return;
       }
 
@@ -358,38 +368,19 @@ const OrderDetailPage = () => {
         setPaymentSubmitting(true);
         setActionError("");
 
-        const response =
-          await api.post(
-            "/payment",
-            {
-              orderId: order.id,
-              amount: Number(
-                order.total
-              ),
-              method: paymentMethod,
-              paidAt:
-                paymentPaidAt ||
-                undefined,
-            }
-          );
-
-        const payment =
-          response.data.data;
-
-        setOrder(
-          (currentOrder) => {
-            if (!currentOrder) {
-              return currentOrder;
-            }
-
-            return {
-              ...currentOrder,
-              payment,
-              paymentStatus:
-                "SUDAH_DIBAYAR",
-            };
+        await api.post(
+          "/payment",
+          {
+            orderId: order.id,
+            amount: Number(order.total),
+            method: paymentMethod,
+            paidAt:
+              paymentPaidAt ||
+              undefined,
           }
         );
+
+        await loadOrder();
 
         setPaymentDialogOpen(false);
         setPaymentMethod("CASH");
@@ -397,9 +388,19 @@ const OrderDetailPage = () => {
       } catch (error) {
         console.error(error);
 
-        setActionError(
-          "Failed to record payment."
-        );
+        const message =
+          (
+            error as {
+              response?: {
+                data?: {
+                  message?: string;
+                };
+              };
+            }
+          )?.response?.data?.message ??
+          "Failed to record payment.";
+
+        setActionError(message);
       } finally {
         setPaymentSubmitting(false);
       }
@@ -466,9 +467,11 @@ const OrderDetailPage = () => {
               </p>
 
               <Badge className="border-0 bg-white/15 text-white hover:bg-white/15">
-                {statusLabels[
-                  order.orderStatus
-                ]}
+                {
+                  statusLabels[
+                    order.orderStatus
+                  ]
+                }
               </Badge>
 
               <Badge
@@ -840,8 +843,7 @@ const OrderDetailPage = () => {
                     );
 
                   const completed =
-                    currentIndex >=
-                      index &&
+                    currentIndex >= index &&
                     order.orderStatus !==
                       "DIBATALKAN";
 
@@ -863,9 +865,11 @@ const OrderDetailPage = () => {
                               : "bg-[#EEEEEE] text-[#8A8D84]"
                         }`}
                       >
-                        {statusLabels[
-                          status
-                        ]}
+                        {
+                          statusLabels[
+                            status
+                          ]
+                        }
                       </div>
 
                       {index <
@@ -896,7 +900,9 @@ const OrderDetailPage = () => {
                 onClick={
                   handleAdvanceStatus
                 }
-                disabled={statusSubmitting}
+                disabled={
+                  statusSubmitting
+                }
                 className="bg-[#8B9A6E] text-white hover:bg-[#7D8C62]"
               >
                 {statusSubmitting
@@ -912,7 +918,9 @@ const OrderDetailPage = () => {
                 onClick={
                   handleCancelOrder
                 }
-                disabled={statusSubmitting}
+                disabled={
+                  statusSubmitting
+                }
                 className="bg-[#B85C5C] text-white hover:bg-[#A64F4F]"
               >
                 {statusSubmitting

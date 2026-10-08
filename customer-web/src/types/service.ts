@@ -1,3 +1,5 @@
+import type { OrderItem } from "./orderItem";
+
 export type ServiceUnit = "KG" | "SATUAN";
 
 export type ServiceCategory =
@@ -15,3 +17,7 @@ export type Service = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type ServiceWithRelations = Service & {
+  orderitems: OrderItem[];
+}

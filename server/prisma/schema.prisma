@@ -62,6 +62,7 @@ model Service {
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
   orderItems OrderItem[]
+  pickupDeliveryRequests PickupDeliveryRequest[]
 }
 
 enum ServiceUnit {
@@ -157,6 +158,8 @@ model PickupDeliveryRequest {
   phone         String
   address       String
   type          PickupDeliveryType
+  serviceId     Int
+  service       Service              @relation(fields: [serviceId], references: [id])
   status        PickupDeliveryStatus @default(PENDING)
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt

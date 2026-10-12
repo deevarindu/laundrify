@@ -2,7 +2,6 @@ import axios from "axios";
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import {
-  Link,
   useNavigate,
 } from "react-router-dom";
 
@@ -156,13 +155,7 @@ const LoginPage = () => {
 
           <div className="mt-7 border-t border-[#eae2d6] pt-6 text-center">
             <p className="text-sm text-[#73776d]">
-              Don't have an account?{" "}
-              <Link
-                to="/register"
-                className="font-semibold text-[#68764f] underline underline-offset-4"
-              >
-                Create one
-              </Link>
+              Don't have an account? Contact an admin
             </p>
           </div>
         </div>

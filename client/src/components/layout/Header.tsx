@@ -1,26 +1,35 @@
+
 import { useAuth } from "../../context/AuthContext";
 
 const Header = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+
+  const initial =
+    user?.name?.trim()?.charAt(0).toUpperCase() || "U";
+
+  const roleLabel =
+    user?.role === "ADMIN" ? "Administrator" : "Staff";
 
   return (
-    <header className="flex h-20 items-center justify-between border-b border-[#DED8CF] bg-[#F7F2EB] px-6 md:px-8">
-      <div>
-        <p className="text-xs font-medium uppercase tracking-[0.16em] text-[#8B9A6E]">
-          Welcome back
-        </p>
+    <header className="sticky top-0 z-30 flex min-h-[76px] items-center justify-end gap-4 border-b border-[#E3DED5] bg-[#F7F2EB]/95 pl-[76px] pr-4 backdrop-blur-md sm:pl-20 sm:pr-6 lg:px-8">
+      <div className="min-w-0 py-3">
 
-        <p className="mt-1 text-md font-semibold text-[#8B9A6E]">
-          {user?.name}
-        </p>
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#D8DECB] bg-[#E9EDDF] text-sm font-semibold text-[#526441]">
+            {initial}
+          </div>
+
+          <div className="hidden min-w-0 sm:block">
+            <p className="text-[12px] font-semibold text-[#34382D]">
+              {roleLabel}
+            </p>
+
+            <p className="mt-0.5 text-[10px] text-[#85897F]">
+              Laundrify Workspace
+            </p>
+          </div>
+        </div>
       </div>
-
-      <button
-        onClick={logout}
-        className="rounded-xl border border-[#D8D2C9] bg-white px-4 py-2 text-sm font-medium text-[#4B5141] shadow-sm transition-colors hover:bg-[#EAE2D6] hover:text-[#30352A]"
-      >
-        Logout
-      </button>
     </header>
   );
 };

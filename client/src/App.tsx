@@ -17,13 +17,15 @@ import PaymentsPage from "./pages/Payments/PaymentsPage";
 import HistoryPage from "./pages/histories/HistoryPage";
 import InvoicePage from "./pages/orders/InvoicePage";
 import PickupDeliveryPage from "./pages/pickup-delivery/PickupDeliveryPage";
-import PickupDeliveryRequestPage from "./pages/pickup-delivery/PickupDeliveryRequestPage";
+import HomePage from "./pages/customer-web-page/HomePage";
+import TrackPage from "./pages/customer-web-page/TrackPage";
+import PickupDeliveryRequestPage from "./pages/customer-web-page/PickupDeliveryRequestPage";
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
 
   if (user?.role !== "ADMIN") {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return children;
@@ -36,6 +38,10 @@ const App = () => {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          
+          <Route path="/" element={<HomePage />} />
+          <Route path="/track" element={<TrackPage />} />
+          <Route path="/request" element={<PickupDeliveryRequestPage />}/>
 
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>

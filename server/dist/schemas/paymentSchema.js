@@ -13,7 +13,9 @@ export const paymentCreateSchema = z.object({
         "QRIS",
     ]),
     paidAt: z.preprocess((value) => {
-        if (value === undefined || value === null || value === "") {
+        if (value === undefined ||
+            value === null ||
+            value === "") {
             return undefined;
         }
         return value;
@@ -30,5 +32,5 @@ export const paymentUpdateSchema = z.object({
             return undefined;
         }
         return value;
-    }, z.coerce.date()).optional(),
+    }, z.coerce.date().optional()),
 });

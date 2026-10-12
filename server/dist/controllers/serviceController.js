@@ -4,8 +4,11 @@ export const getAllServices = async (req, res) => {
     try {
         const query = res.locals.validatedQuery;
         const { q, isActive, category } = query;
+        const isAuthenticated = Boolean(req.user);
         const services = await prisma.service.findMany({
             where: {
+                ...(!isAuthenticated ? { isActive: true } : {}),
+                ...(isActive !== undefined ? { isActive } : {}),
                 ...(q
                     ? {
                         name: {
@@ -14,16 +17,7 @@ export const getAllServices = async (req, res) => {
                         },
                     }
                     : {}),
-                ...(isActive !== undefined
-                    ? {
-                        isActive,
-                    }
-                    : {}),
-                ...(category
-                    ? {
-                        category,
-                    }
-                    : {}),
+                ...(category ? { category } : {}),
             },
             orderBy: {
                 createdAt: "desc",

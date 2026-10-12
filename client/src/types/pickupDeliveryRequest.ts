@@ -1,31 +1,31 @@
 import type { Service } from "./service";
+import type { User } from "./user";
 
-export type PickupDeliveryType =
+export type PickupDeliveryType = 
   | "PICKUP"
-  | "DELIVERY";
+  | "DELIVERY"
+;
 
 export type PickupDeliveryStatus =
   | "PENDING"
   | "ACCEPTED"
-  | "REJECTED";
+  | "REJECTED"
 
-export type PickupDeliveryRequest = {
+export type PickupDelivery = {
   id: number;
   name: string;
   phone: string;
   address: string;
   type: PickupDeliveryType;
   serviceId: number;
-  service: Service;
   status: PickupDeliveryStatus;
   createdAt: string;
   updatedAt: string;
-  processedAt: string | null;
-  processedById: number | null;
-  processedBy?: {
-    id: number;
-    name: string;
-    email: string;
-    role: "ADMIN" | "STAFF";
-  } | null;
-};
+  processedAt: string;
+  processedById: number;
+}
+
+export type PickupDeliveryWithRelations = PickupDelivery & {
+  serviceId: Service;
+  processedBy: User;
+}

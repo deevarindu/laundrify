@@ -137,7 +137,8 @@ export const OrderScalarFieldEnum = {
     total: 'total',
     dueAt: 'dueAt',
     createdAt: 'createdAt',
-    updatedAt: 'updatedAt'
+    updatedAt: 'updatedAt',
+    pickupDeliveryRequestId: 'pickupDeliveryRequestId'
 };
 export const OrderItemScalarFieldEnum = {
     id: 'id',
@@ -154,6 +155,7 @@ export const PaymentScalarFieldEnum = {
     orderId: 'orderId',
     amount: 'amount',
     method: 'method',
+    cashReceived: 'cashReceived',
     paidAt: 'paidAt',
     receivedById: 'receivedById'
 };
@@ -167,15 +169,21 @@ export const OrderStatusHistoryScalarFieldEnum = {
 };
 export const PickupDeliveryRequestScalarFieldEnum = {
     id: 'id',
+    requestCode: 'requestCode',
     name: 'name',
     phone: 'phone',
     address: 'address',
     type: 'type',
+    serviceId: 'serviceId',
     status: 'status',
+    scheduledDate: 'scheduledDate',
+    scheduledStartTime: 'scheduledStartTime',
+    scheduledEndTime: 'scheduledEndTime',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt',
     processedAt: 'processedAt',
-    processedById: 'processedById'
+    processedById: 'processedById',
+    requestedForOrderId: 'requestedForOrderId'
 };
 export const SortOrder = {
     asc: 'asc',

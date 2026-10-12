@@ -5,7 +5,7 @@ import { authorize } from "../middleware/roleMiddleware.js";
 import { validateBody, validateQuery } from "../middleware/validate.js";
 import { serviceCreateSchema, serviceUpdateSchema, serviceQuerySchema } from "../schemas/serviceSchema.js";
 const router = Router();
-router.get("/", authenticate, authorize("ADMIN", "STAFF"), validateQuery(serviceQuerySchema), getAllServices);
+router.get("/", validateQuery(serviceQuerySchema), getAllServices);
 router.get("/:id", authenticate, authorize("ADMIN", "STAFF"), getServiceById);
 router.post("/", authenticate, authorize("ADMIN"), validateBody(serviceCreateSchema), createService);
 router.patch("/:id", authenticate, authorize("ADMIN"), validateBody(serviceUpdateSchema), updateService);

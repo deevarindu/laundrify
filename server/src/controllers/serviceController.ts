@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { Prisma } from "../generated/prisma/client.js";
 import prisma from "../lib/prisma.js";
 
+
 export const getAllServices = async (req: Request, res: Response) => {
   try {
     const query = res.locals.validatedQuery as {
@@ -11,9 +12,12 @@ export const getAllServices = async (req: Request, res: Response) => {
     };
 
     const { q, isActive, category } = query;
+    const isAuthenticated = Boolean(req.user);
 
     const services = await prisma.service.findMany({
       where: {
+        ...(!isAuthenticated ? { isActive: true } : {}),
+        ...(isActive !== undefined ? { isActive } : {}),
         ...(q
           ? {
               name: {
@@ -22,16 +26,7 @@ export const getAllServices = async (req: Request, res: Response) => {
               },
             }
           : {}),
-        ...(isActive !== undefined
-          ? {
-              isActive,
-            }
-          : {}),
-        ...(category
-          ? {
-              category,
-            }
-          : {}),
+        ...(category ? { category } : {}),
       },
       orderBy: {
         createdAt: "desc",

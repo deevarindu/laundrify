@@ -1,8 +1,9 @@
+
 generator client {
-  provider            = "prisma-client"
-  output              = "../src/generated/prisma"
-  moduleFormat        = "esm"
-  importFileExtension = "ts"
+  provider             = "prisma-client"
+  output               = "../src/generated/prisma"
+  moduleFormat         = "esm"
+  importFileExtension  = "ts"
 }
 
 datasource db {
@@ -10,14 +11,14 @@ datasource db {
 }
 
 model User {
-  id                     Int                     @id @default(autoincrement())
+  id                     Int                    @id @default(autoincrement())
   name                   String
-  email                  String                  @unique
+  email                  String                 @unique
   passwordHash           String
   role                   Role
-  isActive               Boolean                 @default(true)
-  createdAt              DateTime                @default(now())
-  updatedAt              DateTime                @updatedAt
+  isActive               Boolean                @default(true)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
   orders                 Order[]
   orderStatusHistories   OrderStatusHistory[]
   paymentsReceived       Payment[]
@@ -53,15 +54,15 @@ model Membership {
 }
 
 model Service {
-  id         Int             @id @default(autoincrement())
-  name       String
-  category   ServiceCategory
-  unit       ServiceUnit
-  price      Decimal         @db.Decimal(12, 2)
-  isActive   Boolean         @default(true)
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
-  orderItems OrderItem[]
+  id                     Int                    @id @default(autoincrement())
+  name                   String
+  category               ServiceCategory
+  unit                   ServiceUnit
+  price                  Decimal                @db.Decimal(12, 2)
+  isActive               Boolean                @default(true)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  orderItems             OrderItem[]
   pickupDeliveryRequests PickupDeliveryRequest[]
 }
 
@@ -77,23 +78,26 @@ enum ServiceCategory {
 }
 
 model Order {
-  id                   Int                  @id @default(autoincrement())
-  orderCode            String               @unique
-  customerId           Int
-  customer             Customer             @relation(fields: [customerId], references: [id])
-  createdById          Int
-  user                 User                 @relation(fields: [createdById], references: [id])
-  orderStatus          OrderStatus          @default(PESANAN_DITERIMA)
-  paymentStatus        PaymentStatus        @default(BELUM_DIBAYAR)
-  subtotal             Decimal              @db.Decimal(12, 2)
-  discount             Decimal              @default(0) @db.Decimal(12, 2)
-  total                Decimal              @db.Decimal(12, 2)
-  dueAt                DateTime?
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
-  orderItems           OrderItem[]
-  payment              Payment?
-  orderStatusHistories OrderStatusHistory[]
+  id                      Int                    @id @default(autoincrement())
+  orderCode               String                 @unique
+  customerId              Int
+  customer                Customer               @relation(fields: [customerId], references: [id])
+  createdById             Int
+  user                    User                   @relation(fields: [createdById], references: [id])
+  orderStatus             OrderStatus            @default(PESANAN_DITERIMA)
+  paymentStatus           PaymentStatus          @default(BELUM_DIBAYAR)
+  subtotal                Decimal                @db.Decimal(12, 2)
+  discount                Decimal                @default(0) @db.Decimal(12, 2)
+  total                   Decimal                @db.Decimal(12, 2)
+  dueAt                   DateTime?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  orderItems              OrderItem[]
+  payment                 Payment?
+  orderStatusHistories    OrderStatusHistory[]
+  pickupDeliveryRequestId Int?                   @unique
+  pickupDeliveryRequest   PickupDeliveryRequest? @relation("OrderCreatedFromRequest", fields: [pickupDeliveryRequestId], references: [id])
+  deliveryRequest         PickupDeliveryRequest? @relation("DeliveryRequestForOrder")
 }
 
 enum PaymentStatus {
@@ -124,15 +128,17 @@ model OrderItem {
   updatedAt     DateTime @updatedAt
 }
 
+
 model Payment {
   id           Int           @id @default(autoincrement())
   orderId      Int           @unique
   order        Order         @relation(fields: [orderId], references: [id])
   amount       Decimal       @db.Decimal(12, 2)
   method       PaymentMethod
+  cashReceived Decimal?      @db.Decimal(12, 2)
   paidAt       DateTime      @default(now())
   receivedById Int?
-  receivedBy   User?          @relation(fields: [receivedById], references: [id])
+  receivedBy   User?         @relation(fields: [receivedById], references: [id])
 }
 
 enum PaymentMethod {
@@ -142,30 +148,37 @@ enum PaymentMethod {
 }
 
 model OrderStatusHistory {
-  id          Int         @id @default(autoincrement())
+  id          Int        @id @default(autoincrement())
   orderId     Int
-  order       Order       @relation(fields: [orderId], references: [id])
+  order       Order      @relation(fields: [orderId], references: [id])
   orderStatus OrderStatus
   changedById Int
-  user        User        @relation(fields: [changedById], references: [id])
-  changedAt   DateTime    @default(now())
+  user        User       @relation(fields: [changedById], references: [id])
+  changedAt   DateTime   @default(now())
   note        String?
 }
 
 model PickupDeliveryRequest {
-  id            Int                  @id @default(autoincrement())
-  name          String
-  phone         String
-  address       String
-  type          PickupDeliveryType
-  serviceId     Int
-  service       Service              @relation(fields: [serviceId], references: [id])
-  status        PickupDeliveryStatus @default(PENDING)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  processedAt   DateTime?
-  processedById Int?
-  processedBy   User?                @relation(fields: [processedById], references: [id])
+  id                  Int                  @id @default(autoincrement())
+  requestCode         String               @unique @default(cuid())
+  name                String
+  phone               String
+  address             String
+  type                PickupDeliveryType
+  serviceId           Int
+  service              Service              @relation(fields: [serviceId], references: [id])
+  status              PickupDeliveryStatus @default(PENDING)
+  scheduledDate       DateTime?
+  scheduledStartTime  String?
+  scheduledEndTime    String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  processedAt         DateTime?
+  processedById       Int?
+  processedBy         User?                @relation(fields: [processedById], references: [id])
+  order               Order?               @relation("OrderCreatedFromRequest")
+  requestedForOrderId Int?                 @unique
+  requestedForOrder   Order?               @relation("DeliveryRequestForOrder", fields: [requestedForOrderId], references: [id])
 }
 
 enum PickupDeliveryType {

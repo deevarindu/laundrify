@@ -1,3 +1,4 @@
+
 import { z } from "zod";
 
 export const paymentCreateSchema = z.object({
@@ -13,6 +14,20 @@ export const paymentCreateSchema = z.object({
     "TRANSFER",
     "QRIS",
   ]),
+  cashReceived: z.preprocess(
+    (value) => {
+      if (
+        value === undefined ||
+        value === null ||
+        value === ""
+      ) {
+        return undefined;
+      }
+
+      return value;
+    },
+    z.coerce.number().positive("Cash received must be greater than 0.").optional()
+  ),
   paidAt: z.preprocess(
     (value) => {
       if (
@@ -35,6 +50,20 @@ export const paymentUpdateSchema = z.object({
     "TRANSFER",
     "QRIS",
   ]).optional(),
+  cashReceived: z.preprocess(
+    (value) => {
+      if (
+        value === undefined ||
+        value === null ||
+        value === ""
+      ) {
+        return undefined;
+      }
+
+      return value;
+    },
+    z.coerce.number().positive("Cash received must be greater than 0.").optional()
+  ),
   paidAt: z.preprocess(
     (value) => {
       if (value === undefined) {

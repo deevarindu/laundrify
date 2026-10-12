@@ -7,7 +7,7 @@ import { serviceCreateSchema, serviceUpdateSchema, serviceQuerySchema } from "..
 
 const router = Router();
 
-router.get("/", authenticate, authorize("ADMIN", "STAFF"), validateQuery(serviceQuerySchema), getAllServices);
+router.get("/", validateQuery(serviceQuerySchema), getAllServices);
 router.get("/:id", authenticate, authorize("ADMIN", "STAFF"), getServiceById);
 router.post("/", authenticate, authorize("ADMIN"), validateBody(serviceCreateSchema), createService);
 router.patch("/:id", authenticate, authorize("ADMIN"), validateBody(serviceUpdateSchema), updateService);

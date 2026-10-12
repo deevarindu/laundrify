@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "@/lib/api";
@@ -18,6 +19,7 @@ type PaymentDetail = {
   id: number;
   amount: number | string;
   method: PaymentMethod;
+  cashReceived?: number | string | null;
   paidAt: string;
 };
 
@@ -55,9 +57,7 @@ const InvoicePage = () => {
     useState(validOrderId);
 
   const [error, setError] = useState(
-    validOrderId
-      ? ""
-      : "Invalid order ID."
+    validOrderId ? "" : "Invalid order ID."
   );
 
   useEffect(() => {
@@ -84,10 +84,7 @@ const InvoicePage = () => {
         }
 
         console.error(error);
-
-        setError(
-          "Failed to load invoice."
-        );
+        setError("Failed to load invoice.");
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -105,46 +102,29 @@ const InvoicePage = () => {
   const formatCurrency = (
     value: number | string
   ) => {
-    return new Intl.NumberFormat(
-      "id-ID",
-      {
-        style: "currency",
-        currency: "IDR",
-        maximumFractionDigits: 0,
-      }
-    ).format(Number(value));
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0,
+    }).format(Number(value));
   };
 
-  const formatDate = (
-    value: string
-  ) => {
-    return new Date(
-      value
-    ).toLocaleDateString(
-      "id-ID",
-      {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      }
-    );
+  const formatDate = (value: string) => {
+    return new Date(value).toLocaleDateString("id-ID", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
   };
 
-  const formatDateTime = (
-    value: string
-  ) => {
-    return new Date(
-      value
-    ).toLocaleString(
-      "id-ID",
-      {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }
-    );
+  const formatDateTime = (value: string) => {
+    return new Date(value).toLocaleString("id-ID", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   const handlePrint = () => {
@@ -166,15 +146,12 @@ const InvoicePage = () => {
       <div className="flex min-h-screen items-center justify-center bg-[#F7F2EB] px-5">
         <div className="w-full max-w-md rounded-3xl border border-[#DED8CF] bg-white p-6 text-center">
           <p className="text-sm text-[#B85C5C]">
-            {error ||
-              "Order not found."}
+            {error || "Order not found."}
           </p>
 
           <Button
             type="button"
-            onClick={() =>
-              navigate("/orders")
-            }
+            onClick={() => navigate("/orders")}
             className="mt-5 bg-[#8B9A6E] text-white hover:bg-[#7D8C62]"
           >
             Back to Orders
@@ -184,6 +161,18 @@ const InvoicePage = () => {
     );
   }
 
+  const payment = order.payment;
+  const isCashPayment = payment?.method === "CASH";
+  const cashReceived =
+    payment?.cashReceived == null
+      ? null
+      : Number(payment.cashReceived);
+  const totalAmount = Number(order.total);
+  const changeAmount =
+    cashReceived !== null
+      ? cashReceived - totalAmount
+      : null;
+
   return (
     <div className="min-h-screen bg-[#F7F2EB] px-4 py-8 print:bg-white print:px-0 print:py-0">
       <div className="mx-auto w-full max-w-3xl">
@@ -191,11 +180,7 @@ const InvoicePage = () => {
           <Button
             type="button"
             variant="outline"
-            onClick={() =>
-              navigate(
-                `/order/${order.id}`
-              )
-            }
+            onClick={() => navigate(`/order/${order.id}`)}
             className="border-[#D8D2C9] bg-white text-[#4B5141] hover:bg-[#EAE2D6]"
           >
             Back
@@ -232,9 +217,7 @@ const InvoicePage = () => {
               </p>
 
               <p className="mt-2 text-sm text-[#73776D]">
-                {formatDate(
-                  order.createdAt
-                )}
+                {formatDate(order.createdAt)}
               </p>
             </div>
           </div>
@@ -246,13 +229,11 @@ const InvoicePage = () => {
               </p>
 
               <p className="mt-2 text-base font-semibold text-[#30352A]">
-                {order.customer?.name ??
-                  "-"}
+                {order.customer?.name ?? "-"}
               </p>
 
               <p className="mt-1 text-sm text-[#4B5141]">
-                {order.customer?.phone ??
-                  "-"}
+                {order.customer?.phone ?? "-"}
               </p>
 
               {order.customer?.address && (
@@ -268,24 +249,18 @@ const InvoicePage = () => {
               </p>
 
               <p className="mt-2 text-sm text-[#4B5141]">
-                Created:{" "}
-                {formatDateTime(
-                  order.createdAt
-                )}
+                Created: {formatDateTime(order.createdAt)}
               </p>
 
               <p className="mt-1 text-sm text-[#4B5141]">
                 Due:{" "}
                 {order.dueAt
-                  ? formatDateTime(
-                      order.dueAt
-                    )
+                  ? formatDateTime(order.dueAt)
                   : "-"}
               </p>
 
               <p className="mt-1 text-sm text-[#4B5141]">
-                Status:{" "}
-                {order.orderStatus}
+                Status: {order.orderStatus}
               </p>
             </div>
           </div>
@@ -296,28 +271,21 @@ const InvoicePage = () => {
                 <span>Service</span>
                 <span>Qty</span>
                 <span>Price</span>
-                <span className="hidden sm:block">
-                  Amount
-                </span>
+                <span className="hidden sm:block">Amount</span>
               </div>
 
-              {(order.orderItems ??
-                []).map((item) => (
+              {(order.orderItems ?? []).map((item) => (
                 <div
                   key={item.id}
                   className="grid grid-cols-[1fr_auto_auto] gap-4 border-t border-[#E2DDD5] px-4 py-4 text-sm sm:grid-cols-[1fr_auto_auto_auto]"
                 >
                   <div>
                     <p className="font-medium text-[#30352A]">
-                      {item.service
-                        ?.name ??
-                        "Unknown Service"}
+                      {item.service?.name ?? "Unknown Service"}
                     </p>
 
                     <p className="mt-1 text-xs text-[#8A8D84]">
-                      {item.service
-                        ?.unit ===
-                      "SATUAN"
+                      {item.service?.unit === "SATUAN"
                         ? "Satuan"
                         : "Kilogram"}
                     </p>
@@ -328,15 +296,11 @@ const InvoicePage = () => {
                   </span>
 
                   <span className="text-[#4B5141]">
-                    {formatCurrency(
-                      item.priceSnapshot
-                    )}
+                    {formatCurrency(item.priceSnapshot)}
                   </span>
 
                   <span className="hidden font-medium text-[#30352A] sm:block">
-                    {formatCurrency(
-                      item.subtotal
-                    )}
+                    {formatCurrency(item.subtotal)}
                   </span>
                 </div>
               ))}
@@ -346,27 +310,16 @@ const InvoicePage = () => {
           <div className="flex justify-end border-b border-[#EAE2D6] pb-7">
             <div className="w-full max-w-sm space-y-3">
               <div className="flex justify-between text-sm">
-                <span className="text-[#73776D]">
-                  Subtotal
-                </span>
-
+                <span className="text-[#73776D]">Subtotal</span>
                 <span className="font-medium text-[#4B5141]">
-                  {formatCurrency(
-                    order.subtotal
-                  )}
+                  {formatCurrency(order.subtotal)}
                 </span>
               </div>
 
               <div className="flex justify-between text-sm">
-                <span className="text-[#73776D]">
-                  Discount
-                </span>
-
+                <span className="text-[#73776D]">Discount</span>
                 <span className="font-medium text-[#4B5141]">
-                  -{" "}
-                  {formatCurrency(
-                    order.discount
-                  )}
+                  - {formatCurrency(order.discount)}
                 </span>
               </div>
 
@@ -376,9 +329,7 @@ const InvoicePage = () => {
                 </span>
 
                 <span className="text-lg font-semibold text-[#30352A]">
-                  {formatCurrency(
-                    order.total
-                  )}
+                  {formatCurrency(order.total)}
                 </span>
               </div>
             </div>
@@ -391,25 +342,60 @@ const InvoicePage = () => {
               </p>
 
               <p className="mt-2 text-sm font-semibold text-[#4B5141]">
-                {order.payment
-                  ? "PAID"
-                  : "UNPAID"}
+                {payment ? "PAID" : "UNPAID"}
               </p>
 
-              {order.payment && (
+              {payment && (
                 <>
                   <p className="mt-2 text-sm text-[#73776D]">
-                    Method:{" "}
-                    {order.payment.method}
+                    Method: {payment.method}
                   </p>
 
                   <p className="mt-1 text-sm text-[#73776D]">
-                    Paid:{" "}
-                    {formatDateTime(
-                      order.payment
-                        .paidAt
-                    )}
+                    Paid: {formatDateTime(payment.paidAt)}
                   </p>
+
+                  <p className="mt-1 text-sm text-[#73776D]">
+                    Amount Paid: {formatCurrency(payment.amount)}
+                  </p>
+
+                  {isCashPayment && (
+                    <>
+                      <div className="mt-4 border-t border-[#EAE2D6] pt-4">
+                        <p className="text-xs font-medium uppercase tracking-wider text-[#8A8D84]">
+                          Cash Payment Details
+                        </p>
+
+                        <div className="mt-3 space-y-2">
+                          <div className="flex justify-between gap-4 text-sm">
+                            <span className="text-[#73776D]">
+                              Cash Received
+                            </span>
+
+                            <span className="font-medium text-[#4B5141]">
+                              {cashReceived === null
+                                ? "-"
+                                : formatCurrency(cashReceived)}
+                            </span>
+                          </div>
+
+                          <div className="flex justify-between gap-4 text-sm">
+                            <span className="text-[#73776D]">
+                              Change
+                            </span>
+
+                            <span className="font-semibold text-[#30352A]">
+                              {changeAmount === null
+                                ? "-"
+                                : changeAmount >= 0
+                                  ? formatCurrency(changeAmount)
+                                  : "Invalid cash amount"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -420,8 +406,7 @@ const InvoicePage = () => {
               </p>
 
               <p className="mt-2 text-sm leading-6 text-[#73776D]">
-                Thank you for trusting Laundrify
-                with your laundry.
+                Thank you for trusting Laundrify with your laundry.
               </p>
             </div>
           </div>

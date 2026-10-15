@@ -1,23 +1,17 @@
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   ArrowRight,
   ArrowUpRight,
   CalendarDays,
   CheckCircle2,
-  CircleDollarSign,
   ClipboardList,
-  Clock3,
-  Package,
   Plus,
   RefreshCw,
   Shirt,
   Truck,
-  WashingMachine,
-  Wallet,
+  UsersRound,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import api from "../lib/api";
@@ -37,8 +31,6 @@ type SummaryCard = {
   title: string;
   value: string | number;
   description: string;
-  icon: LucideIcon;
-  iconClassName: string;
 };
 
 type ServiceSummary = {
@@ -165,7 +157,7 @@ const normalizeOrderStatus = (value: unknown): string => {
   const status = String(value ?? "")
     .trim()
     .toUpperCase()
-    .replaceAll(" ", "_");
+    .replace(/[\s-]+/g, "_");
 
   const aliases: Record<string, string> = {
     RECEIVED: "RECEIVED",
@@ -185,19 +177,26 @@ const normalizeOrderStatus = (value: unknown): string => {
     CANCELLED: "CANCELLED",
     CANCELED: "CANCELLED",
     DIBATALKAN: "CANCELLED",
+    PROCESSING: "PROCESSING",
+    IN_PROGRESS: "PROCESSING",
+    SEDANG_DIPROSES: "PROCESSING",
   };
 
   return aliases[status] ?? status;
 };
 
 const getOrderStatus = (order: DataRecord): string =>
-  normalizeOrderStatus(order.status ?? order.orderStatus);
+  normalizeOrderStatus(
+    order.status ??
+      order.orderStatus ??
+      order.order_status,
+  );
 
 const normalizePaymentStatus = (value: unknown): string => {
   const status = String(value ?? "")
     .trim()
     .toUpperCase()
-    .replaceAll(" ", "_");
+    .replace(/[\s-]+/g, "_");
 
   const aliases: Record<string, string> = {
     PAID: "PAID",
@@ -206,8 +205,11 @@ const normalizePaymentStatus = (value: unknown): string => {
     SUCCESS: "PAID",
     SETTLED: "PAID",
     UNPAID: "UNPAID",
+    NOT_PAID: "UNPAID",
     BELUM_BAYAR: "UNPAID",
     BELUM_DIBAYAR: "UNPAID",
+    BELUM_LUNAS: "UNPAID",
+    MENUNGGU_PEMBAYARAN: "UNPAID",
     PENDING: "UNPAID",
     PARTIALLY_PAID: "PARTIALLY_PAID",
     FAILED: "FAILED",
@@ -221,7 +223,9 @@ const getPaymentStatus = (order: DataRecord): string => {
   const payment = asRecord(order.payment);
 
   return normalizePaymentStatus(
-    order.paymentStatus ?? payment.status,
+    order.paymentStatus ??
+      order.payment_status ??
+      payment.status,
   );
 };
 
@@ -233,6 +237,7 @@ const orderStatusLabels: Record<string, string> = {
   READY: "Ready",
   COMPLETED: "Completed",
   CANCELLED: "Cancelled",
+  PROCESSING: "Processing",
 };
 
 const paymentStatusLabels: Record<string, string> = {
@@ -315,26 +320,6 @@ const DashboardPage = () => {
 
       setDashboardStats({
         ...statsSource,
-        activeOrders: getNumber(
-          statsSource,
-          ["activeOrders", "totalActiveOrders", "activeOrderCount"],
-          0,
-        ),
-        processingOrders: getNumber(
-          statsSource,
-          ["processingOrders", "totalProcessingOrders", "processingOrderCount"],
-          0,
-        ),
-        readyOrders: getNumber(
-          statsSource,
-          ["readyOrders", "totalReadyOrders", "readyOrderCount"],
-          0,
-        ),
-        unpaidOrders: getNumber(
-          statsSource,
-          ["unpaidOrders", "totalUnpaidOrders", "unpaidOrderCount"],
-          0,
-        ),
         todayRevenue: getNumber(
           statsSource,
           ["todayRevenue", "revenueToday", "today_revenue"],
@@ -406,7 +391,9 @@ const DashboardPage = () => {
     }).length;
 
     const processing = orders.filter((order) =>
-      ["WASHING", "DRYING", "IRONING"].includes(getOrderStatus(order)),
+      ["PROCESSING", "WASHING", "DRYING", "IRONING"].includes(
+        getOrderStatus(order),
+      ),
     ).length;
 
     const ready = orders.filter(
@@ -414,11 +401,12 @@ const DashboardPage = () => {
     ).length;
 
     const unpaid = orders.filter((order) => {
-      const status = getPaymentStatus(order);
+      const paymentStatus = getPaymentStatus(order);
+      const orderStatus = getOrderStatus(order);
 
       return (
-        status !== "PAID" &&
-        getOrderStatus(order) !== "CANCELLED"
+        ["UNPAID", "PARTIALLY_PAID", "FAILED"].includes(paymentStatus) &&
+        orderStatus !== "CANCELLED"
       );
     }).length;
 
@@ -428,31 +416,23 @@ const DashboardPage = () => {
   const summaryCards: SummaryCard[] = [
     {
       title: "Active orders",
-      value: dashboardStats?.activeOrders ?? computedStats.active,
+      value: computedStats.active,
       description: "Orders in progress",
-      icon: ClipboardList,
-      iconClassName: "bg-[#E8EEE0] text-[#65774D]",
     },
     {
       title: "Processing",
-      value: dashboardStats?.processingOrders ?? computedStats.processing,
+      value: computedStats.processing,
       description: "Being processed",
-      icon: WashingMachine,
-      iconClassName: "bg-[#E7EDF7] text-[#5474A2]",
     },
     {
       title: "Ready for pickup",
-      value: dashboardStats?.readyOrders ?? computedStats.ready,
+      value: computedStats.ready,
       description: "Waiting for collection",
-      icon: Package,
-      iconClassName: "bg-[#F5EBD8] text-[#A47A39]",
     },
     {
       title: "Unpaid orders",
-      value: dashboardStats?.unpaidOrders ?? computedStats.unpaid,
+      value: computedStats.unpaid,
       description: "Awaiting payment",
-      icon: Wallet,
-      iconClassName: "bg-[#F5E4E1] text-[#AC665C]",
     },
   ];
 
@@ -461,18 +441,16 @@ const DashboardPage = () => {
       title: "Today's revenue",
       value: formatCurrency(dashboardStats?.todayRevenue ?? 0),
       description: "Payments recorded today",
-      icon: CircleDollarSign,
-      iconClassName: "bg-[#E8F2E8] text-[#4D7954]",
     });
   }
 
   const workflow = useMemo(() => {
     const steps = [
-      { key: "RECEIVED", label: "Received", color: "bg-[#A9B89A]" },
-      { key: "WASHING", label: "Washing", color: "bg-[#8EA4C4]" },
-      { key: "DRYING", label: "Drying", color: "bg-[#D3B16D]" },
-      { key: "IRONING", label: "Ironing", color: "bg-[#BA9BCB]" },
-      { key: "READY", label: "Ready", color: "bg-[#87AC8A]" },
+      { key: "RECEIVED", label: "Received" },
+      { key: "WASHING", label: "Washing" },
+      { key: "DRYING", label: "Drying" },
+      { key: "IRONING", label: "Ironing" },
+      { key: "READY", label: "Ready" },
     ];
 
     const counts = steps.map((step) => ({
@@ -601,27 +579,28 @@ const DashboardPage = () => {
   }
 
   return (
-    <div className="space-y-5 pb-6">
-      <section className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+    <div className="space-y-6 pb-8">
+      <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div>
-          <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#81906C]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#81906C]" />
-            Laundrify workspace
-          </div>
+          <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#81906C]">
+            Laundrify / Workspace
+          </p>
 
-          <h1 className="font-heading text-2xl font-semibold tracking-tight text-[#34382D]">
-            Dashboard overview
+          <h1 className="font-heading text-3xl font-medium tracking-[-1.5px] text-[#34382D] sm:text-[38px]">
+            {isAdmin ? "Good morning, Admin." : "Good morning."}
           </h1>
 
-          <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-[#858579]">
-            Monitor your laundry operations, order progress, and daily activity.
+          <p className="mt-2 max-w-lg text-sm leading-6 text-[#858579]">
+            Here's what's happening with your laundry operations today.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#E5DED3] bg-white px-2.5 text-xs text-[#727568]">
-            <CalendarDays size={14} className="text-[#81906C]" />
-            <span>{todayLabel}</span>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div className="flex h-10 items-center gap-2 rounded-lg border border-[#E5DED3] bg-[#FBF9F5] px-3">
+            <CalendarDays size={15} className="text-[#81906C]" />
+            <span className="text-xs font-medium text-[#53594A]">
+              {todayLabel}
+            </span>
           </div>
 
           <button
@@ -630,255 +609,350 @@ const DashboardPage = () => {
               setLoading(true);
               void fetchDashboard();
             }}
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[#E5DED3] bg-white px-2.5 text-xs font-medium text-[#53594A] transition hover:bg-[#F4F0E9]"
             aria-label="Refresh dashboard"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#E5DED3] bg-[#FBF9F5] text-[#53594A] transition hover:border-[#C9D2BD] hover:bg-white"
           >
-            <RefreshCw size={13} />
-            Refresh
+            <RefreshCw size={15} />
           </button>
         </div>
       </section>
 
-      <section
-        className={`grid gap-3 sm:grid-cols-2 ${
-          isAdmin ? "xl:grid-cols-3 2xl:grid-cols-5" : "xl:grid-cols-4"
-        }`}
-      >
-        {summaryCards.map((card) => {
-          const Icon = card.icon;
+      <section className="relative overflow-hidden rounded-2xl bg-[#34382D] p-5 text-[#FBF9F5] sm:p-7 lg:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-24 size-64 rounded-full border border-white/[0.08] sm:-right-10 sm:size-80" />
+        <div className="pointer-events-none absolute -right-5 -top-12 size-48 rounded-full border border-white/[0.08] sm:size-64" />
 
-          return (
-            <article
-              key={card.title}
-              className="group min-w-0 rounded-xl border border-[#E7E0D6] bg-white p-3.5 shadow-[0_1px_5px_rgba(52,56,45,0.025)] transition-colors hover:border-[#D7DCCF] sm:p-4"
+        <div className="relative z-10 flex flex-col justify-between gap-7 sm:flex-row sm:items-end">
+          <div className="max-w-lg">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#BBC7A9]">
+              {isAdmin ? "Business at a glance" : "Daily operations"}
+            </p>
+
+            <h2 className="mt-4 max-w-md font-heading text-2xl font-medium leading-tight tracking-[-0.8px] sm:text-[30px]">
+              {isAdmin
+                ? "Every order, taken care of."
+                : "A smoother day starts here."}
+            </h2>
+
+            <p className="mt-3 max-w-sm text-sm leading-6 text-white/60">
+              {isAdmin
+                ? "Keep track of orders, payments, and the services that keep your business moving."
+                : "Stay on top of laundry progress and keep every order moving forward."}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/orders/create"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#DCE4CF] px-4 text-xs font-semibold text-[#34382D] transition hover:bg-white"
             >
-              <div className="flex items-start justify-between gap-2.5">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium text-[#777B70]">
-                    {card.title}
-                  </p>
+              <Plus size={15} />
+              New order
+            </Link>
 
-                  <p className="mt-2 break-words font-heading text-2xl font-semibold leading-tight tracking-tight text-[#34382D]">
-                    {card.value}
-                  </p>
-                </div>
+            <Link
+              to="/orders"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-white/20 px-4 text-xs font-medium text-white transition hover:bg-white/[0.08]"
+            >
+              View orders
+              <ArrowUpRight size={14} />
+            </Link>
+          </div>
+        </div>
 
-                <div
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${card.iconClassName}`}
-                >
-                  <Icon size={17} strokeWidth={1.8} />
-                </div>
-              </div>
-
-              <p className="mt-2.5 text-[11px] leading-4 text-[#94968C]">
-                {card.description}
-              </p>
-            </article>
-          );
-        })}
+        {isAdmin && (
+          <div className="relative z-10 mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-white/15 pt-4 text-xs text-white/60">
+            <span className="flex items-center gap-2">
+              <span className="size-1.5 rounded-full bg-[#B8C9A2]" />
+              Admin overview
+            </span>
+            <span>Operations and revenue</span>
+          </div>
+        )}
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.45fr_1fr]">
-        <article className="min-w-0 rounded-xl border border-[#E7E0D6] bg-white p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E8EEE0] text-[#65774D]">
-                  <Activity size={16} />
+      <section>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="font-heading text-base font-semibold tracking-tight text-[#34382D]">
+              Operational overview
+            </h2>
+            <p className="mt-1 text-xs text-[#858579]">
+              A snapshot of your current workload.
+            </p>
+          </div>
+
+          <span className="hidden text-[10px] uppercase tracking-[0.14em] text-[#96968C] sm:block">
+            Live totals
+          </span>
+        </div>
+
+        <div
+          className={`grid gap-3 sm:grid-cols-2 ${
+            isAdmin ? "xl:grid-cols-5" : "xl:grid-cols-4"
+          }`}
+        >
+          {summaryCards.map((card, index) => {
+            const isRevenue = card.title === "Today's revenue";
+
+            return (
+              <article
+                key={card.title}
+                className={`relative min-w-0 overflow-hidden rounded-xl border p-4 transition-colors hover:border-[#D2D8C8] ${
+                  isRevenue
+                    ? "border-[#D6DECB] bg-[#E9EEDF]"
+                    : "border-[#E7E0D6] bg-[#FBF9F5]"
+                }`}
+              >
+                <p className="text-xs font-medium text-[#777B70]">
+                  {card.title}
+                </p>
+
+                <p
+                  className={`mt-5 break-words font-heading text-[27px] font-medium leading-tight tracking-[-1px] tabular-nums ${
+                    isRevenue ? "text-[#536541]" : "text-[#34382D]"
+                  }`}
+                >
+                  {card.value}
+                </p>
+
+                <div className="mt-4 flex items-center gap-2 border-t border-[#34382D]/[0.08] pt-3">
+                  <span
+                    className={`size-1.5 shrink-0 rounded-full ${
+                      index === 0 || isRevenue
+                        ? "bg-[#81906C]"
+                        : "bg-[#C7C6B9]"
+                    }`}
+                  />
+                  <p className="text-[11px] leading-4 text-[#858579]">
+                    {card.description}
+                  </p>
                 </div>
+              </article>
+            );
+          })}
+        </div>
+      </section>
 
-                <h2 className="font-heading text-sm font-semibold text-[#34382D]">
-                  Order workflow
-                </h2>
-              </div>
+      <section className="grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+        <article className="min-w-0 rounded-xl border border-[#E7E0D6] bg-[#FBF9F5] p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.17em] text-[#81906C]">
+                Production
+              </p>
 
-              <p className="mt-1.5 text-xs text-[#858579]">
-                Order count by processing stage.
+              <h2 className="mt-2 font-heading text-lg font-semibold tracking-tight text-[#34382D]">
+                Order workflow
+              </h2>
+
+              <p className="mt-1 text-xs leading-5 text-[#858579]">
+                Where your orders are in the process.
               </p>
             </div>
 
             <Link
               to="/orders"
-              className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-[#758760] transition hover:text-[#536541]"
+              className="inline-flex items-center gap-1 text-xs font-medium text-[#758760] transition hover:text-[#536541]"
             >
               All orders
-              <ArrowUpRight size={13} />
+              <ArrowUpRight size={14} />
             </Link>
           </div>
 
-          <div className="mt-5 space-y-4">
-            {workflow.map((step) => (
-              <div key={step.key}>
-                <div className="mb-1.5 flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium text-[#55594E]">
-                    {step.label}
-                  </span>
-                  <span className="text-xs font-semibold tabular-nums text-[#34382D]">
-                    {step.count}
-                  </span>
-                </div>
+          <div className="mt-7 grid grid-cols-5 gap-2">
+            {workflow.map((step, index) => {
+              const stageColors = [
+                "#A9B89A",
+                "#8EA4C4",
+                "#D3B16D",
+                "#BA9BCB",
+                "#87AC8A",
+              ];
 
-                <div className="h-1.5 overflow-hidden rounded-full bg-[#F0EDE7]">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${step.color}`}
-                    style={{ width: `${step.percentage}%` }}
-                  />
+              const stageColor = stageColors[index] ?? "#A9B89A";
+
+              return (
+                <div key={step.key} className="min-w-0">
+                  <div className="mb-3 flex h-9 items-end">
+                    <span className="font-heading text-xl font-medium tabular-nums tracking-tight text-[#34382D] sm:text-2xl">
+                      {step.count}
+                    </span>
+                  </div>
+
+                  <div className="h-1.5 overflow-hidden rounded-full bg-[#EDE9E1]">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${step.percentage}%`,
+                        backgroundColor: stageColor,
+                      }}
+                    />
+                  </div>
+
+                  <p className="mt-2.5 break-words text-[10px] leading-4 text-[#777B70] sm:text-xs">
+                    {step.label}
+                  </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          <div className="mt-4 flex items-center gap-1.5 border-t border-[#EEE9E1] pt-3 text-[10px] leading-4 text-[#858579]">
-            <CheckCircle2 size={13} className="shrink-0 text-[#81906C]" />
-            Completed and cancelled orders are excluded.
+          <div className="mt-7 flex items-start gap-2 border-t border-[#EAE4DB] pt-4">
+            <CheckCircle2
+              size={14}
+              className="mt-0.5 shrink-0 text-[#81906C]"
+            />
+            <p className="text-[11px] leading-5 text-[#858579]">
+              Counts represent orders currently in each stage. Completed and
+              cancelled orders are excluded.
+            </p>
           </div>
         </article>
 
-        <article className="min-w-0 rounded-xl border border-[#E7E0D6] bg-white p-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F5EBD8] text-[#A47A39]">
-              <Clock3 size={16} />
-            </div>
-
-            <h2 className="font-heading text-sm font-semibold text-[#34382D]">
-              Quick actions
-            </h2>
-          </div>
-
-          <p className="mt-1.5 text-xs leading-5 text-[#858579]">
-            Shortcuts to common tasks.
+        <article className="min-w-0 rounded-xl border border-[#E7E0D6] bg-[#FBF9F5] p-5 sm:p-6">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.17em] text-[#81906C]">
+            Shortcuts
           </p>
 
-          <div className="mt-4 space-y-2.5">
+          <h2 className="mt-2 font-heading text-lg font-semibold tracking-tight text-[#34382D]">
+            Get things done
+          </h2>
+
+          <p className="mt-1 text-xs leading-5 text-[#858579]">
+            Jump straight into your everyday tasks.
+          </p>
+
+          <div className="mt-5 divide-y divide-[#EAE4DB]">
             <Link
               to="/orders/create"
-              className="group flex items-center gap-2.5 rounded-lg border border-[#E7E0D6] p-2.5 transition hover:border-[#C9D2BD] hover:bg-[#FAFBF8]"
+              className="group flex items-center gap-3 py-3.5 first:pt-0"
             >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#E8EEE0] text-[#65774D]">
-                <Plus size={16} />
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#E8EEE0] text-[#65774D]">
+                <Plus size={17} strokeWidth={1.8} />
               </div>
 
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-[#34382D]">
-                  Create new order
+                <p className="text-sm font-medium text-[#454B3A] transition group-hover:text-[#758760]">
+                  Create an order
                 </p>
-                <p className="mt-0.5 text-[10px] text-[#858579]">
-                  Register a laundry order
+                <p className="mt-1 text-[11px] text-[#858579]">
+                  Register a new laundry order
                 </p>
               </div>
 
               <ArrowRight
-                size={14}
-                className="shrink-0 text-[#A1A394] transition group-hover:translate-x-0.5 group-hover:text-[#65774D]"
+                size={15}
+                className="shrink-0 text-[#AAA99D] transition group-hover:translate-x-1 group-hover:text-[#758760]"
               />
             </Link>
 
             <Link
               to="/pickup-delivery"
-              className="group flex items-center gap-2.5 rounded-lg border border-[#E7E0D6] p-2.5 transition hover:border-[#C9D2BD] hover:bg-[#FAFBF8]"
+              className="group flex items-center gap-3 py-3.5"
             >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#E7EDF7] text-[#5474A2]">
-                <Truck size={16} />
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#E8EEE0] text-[#65774D]">
+                <Truck size={16} strokeWidth={1.8} />
               </div>
 
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-[#34382D]">
+                <p className="text-sm font-medium text-[#454B3A] transition group-hover:text-[#758760]">
                   Pickup & delivery
                 </p>
-                <p className="mt-0.5 text-[10px] text-[#858579]">
+                <p className="mt-1 text-[11px] text-[#858579]">
                   Review customer requests
                 </p>
               </div>
 
               <ArrowRight
-                size={14}
-                className="shrink-0 text-[#A1A394] transition group-hover:translate-x-0.5 group-hover:text-[#65774D]"
+                size={15}
+                className="shrink-0 text-[#AAA99D] transition group-hover:translate-x-1 group-hover:text-[#758760]"
               />
             </Link>
 
             <Link
               to="/customers"
-              className="group flex items-center gap-2.5 rounded-lg border border-[#E7E0D6] p-2.5 transition hover:border-[#C9D2BD] hover:bg-[#FAFBF8]"
+              className="group flex items-center gap-3 py-3.5 last:pb-0"
             >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F2E8F4] text-[#8A6C91]">
-                <Shirt size={16} />
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#E8EEE0] text-[#65774D]">
+                <UsersRound size={16} strokeWidth={1.8} />
               </div>
 
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-[#34382D]">
+                <p className="text-sm font-medium text-[#454B3A] transition group-hover:text-[#758760]">
                   Manage customers
                 </p>
-                <p className="mt-0.5 text-[10px] text-[#858579]">
-                  View registered customers
+                <p className="mt-1 text-[11px] text-[#858579]">
+                  Browse your customer records
                 </p>
               </div>
 
               <ArrowRight
-                size={14}
-                className="shrink-0 text-[#A1A394] transition group-hover:translate-x-0.5 group-hover:text-[#65774D]"
+                size={15}
+                className="shrink-0 text-[#AAA99D] transition group-hover:translate-x-1 group-hover:text-[#758760]"
               />
             </Link>
           </div>
         </article>
       </section>
 
-      <section className="grid min-w-0 gap-4 2xl:grid-cols-[1.4fr_1fr]">
-        <article className="min-w-0 overflow-hidden rounded-xl border border-[#E7E0D6] bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#EEE9E1] px-4 py-3.5">
+      <section className="grid min-w-0 gap-4 2xl:grid-cols-[1.35fr_0.85fr]">
+        <article className="min-w-0 overflow-hidden rounded-xl border border-[#E7E0D6] bg-[#FBF9F5]">
+          <div className="flex flex-wrap items-end justify-between gap-3 px-5 py-5 sm:px-6">
             <div>
-              <div className="flex items-center gap-2">
-                <ClipboardList size={16} className="text-[#81906C]" />
-                <h2 className="font-heading text-sm font-semibold text-[#34382D]">
-                  Recent orders
-                </h2>
-              </div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.17em] text-[#81906C]">
+                Latest activity
+              </p>
 
-              <p className="mt-1 text-[11px] text-[#858579]">
-                Latest orders recorded in the system.
+              <h2 className="mt-2 font-heading text-lg font-semibold tracking-tight text-[#34382D]">
+                Recent orders
+              </h2>
+
+              <p className="mt-1 text-xs leading-5 text-[#858579]">
+                The latest orders recorded in your workspace.
               </p>
             </div>
 
             <Link
               to="/orders"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[#758760] transition hover:text-[#536541]"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#758760] transition hover:text-[#536541]"
             >
-              View all
-              <ArrowRight size={13} />
+              View all orders
+              <ArrowRight size={14} />
             </Link>
           </div>
 
           {sortedOrders.length === 0 ? (
-            <div className="flex min-h-40 flex-col items-center justify-center px-4 py-8 text-center">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F4F0E9] text-[#969889]">
-                <ClipboardList size={18} />
-              </div>
-
-              <p className="mt-2.5 text-xs font-semibold text-[#53594A]">
+            <div className="flex min-h-44 flex-col items-center justify-center border-t border-[#EAE4DB] px-5 py-10 text-center">
+              <ClipboardList
+                size={22}
+                strokeWidth={1.5}
+                className="text-[#A4A697]"
+              />
+              <p className="mt-3 text-sm font-medium text-[#53594A]">
                 No orders yet
               </p>
-
-              <p className="mt-1 text-[11px] text-[#858579]">
+              <p className="mt-1 text-xs text-[#858579]">
                 New orders will appear here.
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] border-collapse text-left">
+            <div className="overflow-x-auto border-t border-[#EAE4DB]">
+              <table className="w-full min-w-[650px] border-collapse text-left">
                 <thead>
-                  <tr className="bg-[#FAF9F6]">
-                    <th className="whitespace-nowrap px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579] sm:px-4">
+                  <tr className="bg-[#F4F1EA]">
+                    <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579] sm:px-5">
                       Order
                     </th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579]">
+                    <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579]">
                       Customer
                     </th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579]">
+                    <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579]">
                       Status
                     </th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579]">
+                    <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579]">
                       Payment
                     </th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579]">
+                    <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579]">
                       Total
                     </th>
                   </tr>
@@ -891,13 +965,14 @@ const DashboardPage = () => {
                     const orderId = String(order.id ?? "");
 
                     const statusClasses: Record<string, string> = {
-                      RECEIVED: "bg-[#F1EEE6] text-[#81765A]",
-                      WASHING: "bg-[#E7EDF7] text-[#5474A2]",
-                      DRYING: "bg-[#F5EBD8] text-[#A47A39]",
-                      IRONING: "bg-[#F2E8F4] text-[#8A6C91]",
+                      RECEIVED: "bg-[#F5E8D5] text-[#9A713D]",
+                      WASHING: "bg-[#E5EDF5] text-[#557797]",
+                      DRYING: "bg-[#F8EBD5] text-[#A17C3D]",
+                      IRONING: "bg-[#EEE7F5] text-[#80649F]",
                       READY: "bg-[#E8F2E8] text-[#4D7954]",
-                      COMPLETED: "bg-[#E8F2E8] text-[#4D7954]",
-                      CANCELLED: "bg-[#F5E4E1] text-[#AC665C]",
+                      COMPLETED: "bg-[#E4E9DA] text-[#697851]",
+                      CANCELLED: "bg-[#F5E5E2] text-[#A65F55]",
+                      PROCESSING: "bg-[#E5EDF5] text-[#557797]",
                     };
 
                     const paymentClasses: Record<string, string> = {
@@ -910,28 +985,34 @@ const DashboardPage = () => {
                     return (
                       <tr
                         key={orderId || getOrderCode(order) || index}
-                        className="border-t border-[#F0ECE5] transition hover:bg-[#FCFBF8]"
+                        className={`border-t border-[#EEE9E1] transition-colors ${
+                          status === "COMPLETED"
+                            ? "bg-[#F0F3E9] hover:bg-[#E9EEDF]"
+                            : status === "CANCELLED"
+                              ? "bg-[#FCF3F1] hover:bg-[#F9EAE7]"
+                              : "hover:bg-white"
+                        }`}
                       >
-                        <td className="px-3 py-3 sm:px-4">
+                        <td className="px-4 py-3.5 sm:px-5">
                           <Link
                             to={`/order/${orderId}`}
-                            className="text-xs font-semibold text-[#454B3A] transition hover:text-[#788A61]"
+                            className="text-xs font-semibold text-[#454B3A] transition hover:text-[#758760]"
                           >
                             {getOrderCode(order)}
                           </Link>
 
-                          <p className="mt-0.5 whitespace-nowrap text-[10px] text-[#96968C]">
+                          <p className="mt-1 whitespace-nowrap text-[10px] text-[#96968C]">
                             {formatDateTime(getOrderCreatedAt(order))}
                           </p>
                         </td>
 
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-3.5">
                           <span className="block max-w-[130px] truncate text-xs font-medium text-[#53594A]">
                             {getCustomerName(order)}
                           </span>
                         </td>
 
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-3.5">
                           <span
                             className={`inline-flex whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-medium ${
                               statusClasses[status] ??
@@ -942,7 +1023,7 @@ const DashboardPage = () => {
                           </span>
                         </td>
 
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-3.5">
                           <span
                             className={`inline-flex whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-medium ${
                               paymentClasses[paymentStatus] ??
@@ -955,7 +1036,7 @@ const DashboardPage = () => {
                           </span>
                         </td>
 
-                        <td className="whitespace-nowrap px-3 py-3 text-right text-xs font-semibold tabular-nums text-[#34382D]">
+                        <td className="whitespace-nowrap px-5 py-3.5 text-right text-xs font-semibold tabular-nums text-[#34382D]">
                           {formatCurrency(getOrderTotal(order))}
                         </td>
                       </tr>
@@ -967,90 +1048,112 @@ const DashboardPage = () => {
           )}
 
           {sortedOrders.length > 0 && (
-            <div className="border-t border-[#EEE9E1] px-4 py-2.5 text-[10px] text-[#96968C]">
-              Showing {Math.min(sortedOrders.length, 6)} of {sortedOrders.length}{" "}
-              loaded orders
+            <div className="border-t border-[#EAE4DB] px-5 py-3 text-[10px] text-[#96968C]">
+              Showing {Math.min(sortedOrders.length, 6)} of{" "}
+              {sortedOrders.length} loaded orders
             </div>
           )}
         </article>
 
-        <article className="min-w-0 overflow-hidden rounded-xl border border-[#E7E0D6] bg-white">
-          <div className="border-b border-[#EEE9E1] px-4 py-3.5">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#E8EEE0] text-[#65774D]">
-                <Shirt size={16} />
-              </div>
+        <article className="min-w-0 overflow-hidden rounded-xl border border-[#E7E0D6] bg-[#FBF9F5]">
+          <div className="px-5 py-5 sm:px-6">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.17em] text-[#81906C]">
+              Service performance
+            </p>
 
-              <h2 className="font-heading text-sm font-semibold text-[#34382D]">
-                Best-selling services
-              </h2>
-            </div>
+            <h2 className="mt-2 font-heading text-lg font-semibold tracking-tight text-[#34382D]">
+              Best-selling services
+            </h2>
 
-            <p className="mt-1.5 text-[11px] text-[#858579]">
+            <p className="mt-1 text-xs leading-5 text-[#858579]">
               Ranked by quantity in loaded orders.
             </p>
           </div>
 
           {bestSellingServices.length === 0 ? (
-            <div className="flex min-h-40 flex-col items-center justify-center px-4 py-8 text-center">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F4F0E9] text-[#969889]">
-                <Shirt size={18} />
-              </div>
-
-              <p className="mt-2.5 text-xs font-semibold text-[#53594A]">
+            <div className="flex min-h-44 flex-col items-center justify-center border-t border-[#EAE4DB] px-5 py-10 text-center">
+              <Shirt
+                size={22}
+                strokeWidth={1.5}
+                className="text-[#A4A697]"
+              />
+              <p className="mt-3 text-sm font-medium text-[#53594A]">
                 No service data yet
               </p>
-
-              <p className="mt-1 text-[11px] leading-4 text-[#858579]">
+              <p className="mt-1 max-w-[220px] text-xs leading-5 text-[#858579]">
                 Service statistics will appear when order items are available.
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-[#F0ECE5]">
-              {bestSellingServices.map((service, index) => (
-                <div
-                  key={service.id}
-                  className="flex items-center gap-2.5 px-3.5 py-3 sm:px-4"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F4F0E9] font-heading text-xs font-semibold text-[#758760]">
-                    {String(index + 1).padStart(2, "0")}
-                  </div>
+            <div className="border-t border-[#EAE4DB]">
+              {bestSellingServices.map((service, index) => {
+                const maxQuantity = Math.max(
+                  1,
+                  ...bestSellingServices.map((item) => item.quantity),
+                );
 
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold text-[#454B3A]">
-                      {service.name}
-                    </p>
+                const percentage = Math.min(
+                  100,
+                  (service.quantity / maxQuantity) * 100,
+                );
 
-                    <p className="mt-0.5 text-[10px] text-[#96968C]">
-                      {service.quantity} units · {service.transactions} order{" "}
-                      {service.transactions === 1 ? "line" : "lines"}
-                    </p>
-                  </div>
+                return (
+                  <div
+                    key={service.id}
+                    className="border-b border-[#EEE9E1] px-5 py-4 last:border-b-0 sm:px-6"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="pt-0.5 font-heading text-xs font-medium tabular-nums text-[#9A9D8D]">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
 
-                  <div className="shrink-0 text-right">
-                    <p className="text-xs font-semibold tabular-nums text-[#34382D]">
-                      {formatCurrency(service.revenue)}
-                    </p>
-                    <p className="mt-0.5 text-[10px] text-[#96968C]">
-                      {service.unit}
-                    </p>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold text-[#454B3A]">
+                            {service.name}
+                          </p>
+                          <p className="mt-1 text-[10px] text-[#858579]">
+                            {service.quantity} units · {service.transactions}{" "}
+                            {service.transactions === 1
+                              ? "order line"
+                              : "order lines"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <p className="shrink-0 text-xs font-semibold tabular-nums text-[#34382D]">
+                        {formatCurrency(service.revenue)}
+                      </p>
+                    </div>
+
+                    <div className="ml-7 mt-3 h-1 overflow-hidden rounded-full bg-[#EDE9E1]">
+                      <div
+                        className="h-full rounded-full bg-[#9EAD88] transition-all duration-500"
+                        style={{ width: `${percentage}%` }}
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
-          <div className="border-t border-[#EEE9E1] px-4 py-3">
+          <div className="border-t border-[#EAE4DB] px-5 py-4 sm:px-6">
             <Link
               to="/services"
-              className="inline-flex items-center gap-1 text-xs font-semibold text-[#758760] transition hover:text-[#536541]"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#758760] transition hover:text-[#536541]"
             >
               Manage services
-              <ArrowRight size={13} />
+              <ArrowRight size={14} />
             </Link>
           </div>
         </article>
       </section>
+
+      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-[#E5DED3] pt-4 text-[10px] text-[#96968C]">
+        <span>Laundrify workspace</span>
+        <span>Care in every detail.</span>
+      </footer>
     </div>
   );
 };

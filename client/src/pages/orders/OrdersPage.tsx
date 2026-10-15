@@ -1,84 +1,172 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  ArrowDownUp,
-  ArrowRight,
-  CalendarDays,
-  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
-  Clock3,
   Plus,
-  RefreshCw,
   Search,
-  SlidersHorizontal,
-  X,
+  ArrowUpDown,
 } from "lucide-react";
-import api from "../../lib/api";
-import type { Customer, Order } from "../../types";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import api from "@/lib/api";
 
-type OrderStatusFilter = "ALL" | Order["orderStatus"];
-type PaymentStatusFilter = "ALL" | Order["paymentStatus"];
+type UnknownRecord = Record<string, unknown>;
 
-type StatCard = {
-  label: string;
-  value: number;
-  description: string;
-  icon: typeof ClipboardList;
-  iconClass: string;
+type Order = {
+  id: string;
+  orderCode?: string | null;
+  code?: string | null;
+  invoiceNumber?: string | null;
+  customerId?: string | null;
+  customer?: {
+    id?: string;
+    name?: string | null;
+    fullName?: string | null;
+    phone?: string | null;
+  } | null;
+  customerName?: string | null;
+  createdAt?: string | null;
+  created_at?: string | null;
+  orderDate?: string | null;
+  status?: unknown;
+  orderStatus?: unknown;
+  order_status?: unknown;
+  paymentStatus?: unknown;
+  payment_status?: unknown;
+  payment?: unknown;
+  total?: number | string | null;
+  grandTotal?: number | string | null;
+  amount?: number | string | null;
+  subtotal?: number;
+  discount?: number;
+  dueAt?: string | null;
+  items?: {
+    id?: string;
+    quantity?: number;
+    service?: {
+      name?: string;
+    } | null;
+  }[];
 };
 
-const orderStatusLabels: Record<Order["orderStatus"], string> = {
+type Customer = {
+  id: string;
+  name: string;
+  phone?: string | null;
+};
+
+type SortKey = "newest" | "oldest" | "highest" | "lowest";
+
+const PAGE_SIZE = 8;
+
+const statusLabels: Record<string, string> = {
+  RECEIVED: "Received",
   PESANAN_DITERIMA: "Received",
+  DITERIMA: "Received",
+  ORDER_RECEIVED: "Received",
+  WASHING: "Washing",
   DICUCI: "Washing",
+  DRYING: "Drying",
   DIKERINGKAN: "Drying",
+  IRONING: "Ironing",
   DISETRIKA: "Ironing",
-  SIAP_DIAMBIL: "Ready for pickup",
+  READY: "Ready",
+  SIAP_DIAMBIL: "Ready",
+  READY_FOR_PICKUP: "Ready",
+  COMPLETED: "Completed",
   SELESAI: "Completed",
+  CANCELLED: "Cancelled",
+  CANCELED: "Cancelled",
   DIBATALKAN: "Cancelled",
+  PROCESSING: "Processing",
+  IN_PROGRESS: "Processing",
+  SEDANG_DIPROSES: "Processing",
 };
 
-const paymentStatusLabels: Record<Order["paymentStatus"], string> = {
-  BELUM_DIBAYAR: "Unpaid",
+const paymentLabels: Record<string, string> = {
+  PAID: "Paid",
+  LUNAS: "Paid",
   SUDAH_DIBAYAR: "Paid",
+  SUCCESS: "Paid",
+  SETTLED: "Paid",
+  UNPAID: "Unpaid",
+  NOT_PAID: "Unpaid",
+  BELUM_BAYAR: "Unpaid",
+  BELUM_DIBAYAR: "Unpaid",
+  BELUM_LUNAS: "Unpaid",
+  MENUNGGU_PEMBAYARAN: "Unpaid",
+  PENDING: "Pending",
+  PARTIALLY_PAID: "Partially paid",
+  FAILED: "Failed",
+  EXPIRED: "Expired",
 };
 
-const orderStatusClasses: Record<Order["orderStatus"], string> = {
-  PESANAN_DITERIMA: "border-[#E9DFC6] bg-[#F8F1E3] text-[#927441]",
-  DICUCI: "border-[#D8E3F2] bg-[#EDF3FA] text-[#5474A2]",
-  DIKERINGKAN: "border-[#F0DFC4] bg-[#FBF1E1] text-[#A47A39]",
-  DISETRIKA: "border-[#E6DCEE] bg-[#F5EDF8] text-[#886C94]",
-  SIAP_DIAMBIL: "border-[#D6E7D5] bg-[#EDF5EA] text-[#4D7954]",
-  SELESAI: "border-[#D6E7D5] bg-[#EDF5EA] text-[#4D7954]",
-  DIBATALKAN: "border-[#EBD6D3] bg-[#FAEFED] text-[#AC665C]",
+const isRecord = (value: unknown): value is UnknownRecord =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const readString = (...values: unknown[]): string => {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+
+    if (isRecord(value)) {
+      const nested = readString(
+        value.status,
+        value.orderStatus,
+        value.paymentStatus,
+        value.value,
+        value.name,
+        value.label,
+        value.code,
+      );
+
+      if (nested) return nested;
+    }
+  }
+
+  return "";
 };
 
-const paymentStatusClasses: Record<Order["paymentStatus"], string> = {
-  BELUM_DIBAYAR: "border-[#E9DFC6] bg-[#F8F1E3] text-[#927441]",
-  SUDAH_DIBAYAR: "border-[#D6E7D5] bg-[#EDF5EA] text-[#4D7954]",
+const extractArray = <T,>(data: unknown): T[] => {
+  if (Array.isArray(data)) return data as T[];
+
+  if (!isRecord(data)) return [];
+
+  for (const key of ["data", "orders", "customers", "results", "items"]) {
+    const result = data[key];
+
+    if (Array.isArray(result)) return result as T[];
+
+    if (isRecord(result)) {
+      for (const nestedKey of ["data", "orders", "customers", "results", "items"]) {
+        if (Array.isArray(result[nestedKey])) {
+          return result[nestedKey] as T[];
+        }
+      }
+    }
+  }
+
+  return [];
 };
 
-const formatCurrency = (value: number | string): string =>
+const formatCurrency = (value: number) =>
   new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     maximumFractionDigits: 0,
-  }).format(Number(value) || 0);
+  }).format(value);
 
-const formatDate = (value: string | Date): string => {
+const formatDate = (value?: string | null) => {
+  if (!value) return "-";
+
   const date = new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
+  if (Number.isNaN(date.getTime())) return "-";
 
   return new Intl.DateTimeFormat("id-ID", {
     day: "2-digit",
@@ -87,615 +175,783 @@ const formatDate = (value: string | Date): string => {
   }).format(date);
 };
 
-const formatTime = (value: string | Date): string => {
-  const date = new Date(value);
+const getOrderCode = (order: Order) =>
+  readString(order.orderCode, order.code, order.invoiceNumber, order.id) || "-";
 
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
+const getOrderDate = (order: Order) =>
+  readString(order.createdAt, order.created_at, order.orderDate);
 
-  return new Intl.DateTimeFormat("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+const getOrderTotal = (order: Order) => {
+  const total = Number(order.total ?? order.grandTotal ?? order.amount ?? 0);
+  return Number.isFinite(total) ? total : 0;
 };
 
-const OrdersPage = () => {
-  const navigate = useNavigate();
+const normalizeKey = (value: unknown) =>
+  readString(value)
+    .normalize("NFKC")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
 
+const getOrderStatus = (order: Order) =>
+  normalizeKey(order.status ?? order.orderStatus ?? order.order_status);
+
+const normalizeStatus = (status: unknown) => {
+  const value = normalizeKey(status);
+
+  const aliases: Record<string, string> = {
+    RECEIVED: "RECEIVED",
+    PESANAN_DITERIMA: "RECEIVED",
+    DITERIMA: "RECEIVED",
+    ORDER_RECEIVED: "RECEIVED",
+    WASHING: "WASHING",
+    DICUCI: "WASHING",
+    DRYING: "DRYING",
+    DIKERINGKAN: "DRYING",
+    IRONING: "IRONING",
+    DISETRIKA: "IRONING",
+    READY: "READY",
+    SIAP_DIAMBIL: "READY",
+    READY_FOR_PICKUP: "READY",
+    COMPLETED: "COMPLETED",
+    SELESAI: "COMPLETED",
+    CANCELLED: "CANCELLED",
+    CANCELED: "CANCELLED",
+    DIBATALKAN: "CANCELLED",
+    PROCESSING: "PROCESSING",
+    IN_PROGRESS: "PROCESSING",
+    SEDANG_DIPROSES: "PROCESSING",
+  };
+
+  return aliases[value] ?? value;
+};
+
+const getOrderPaymentStatus = (order: Order) => {
+  const payment = isRecord(order.payment) ? order.payment : {};
+
+  return normalizeKey(
+    order.paymentStatus ??
+      order.payment_status ??
+      payment.status ??
+      payment.paymentStatus,
+  );
+};
+
+const normalizePaymentStatus = (status: unknown) => {
+  const value = normalizeKey(status);
+
+  const aliases: Record<string, string> = {
+    PAID: "PAID",
+    LUNAS: "PAID",
+    SUDAH_DIBAYAR: "PAID",
+    SUCCESS: "PAID",
+    SETTLED: "PAID",
+    UNPAID: "UNPAID",
+    NOT_PAID: "UNPAID",
+    BELUM_BAYAR: "UNPAID",
+    BELUM_DIBAYAR: "UNPAID",
+    BELUM_LUNAS: "UNPAID",
+    MENUNGGU_PEMBAYARAN: "UNPAID",
+    PENDING: "PENDING",
+    PARTIALLY_PAID: "PARTIALLY_PAID",
+    FAILED: "FAILED",
+    EXPIRED: "EXPIRED",
+  };
+
+  return aliases[value] ?? value;
+};
+
+const getStatusLabel = (status: unknown) => {
+  const value = normalizeStatus(status);
+
+  return (
+    statusLabels[value] ??
+    (value
+      ? value
+          .replaceAll("_", " ")
+          .toLowerCase()
+          .replace(/^\w/, (character) => character.toUpperCase())
+      : "Unknown")
+  );
+};
+
+const getPaymentLabel = (status: unknown) => {
+  const value = normalizePaymentStatus(status);
+
+  return (
+    paymentLabels[value] ??
+    (value
+      ? value
+          .replaceAll("_", " ")
+          .toLowerCase()
+          .replace(/^\w/, (character) => character.toUpperCase())
+      : "Unknown")
+  );
+};
+
+const getStatusStyle = (status: unknown) => {
+  const styles: Record<string, string> = {
+    RECEIVED: "bg-[#F5E8D5] text-[#9A713D]",
+    WASHING: "bg-[#E5EDF5] text-[#557797]",
+    DRYING: "bg-[#F8EBD5] text-[#A17C3D]",
+    IRONING: "bg-[#EEE7F5] text-[#80649F]",
+    READY: "bg-[#E8F2E8] text-[#4D7954]",
+    COMPLETED: "bg-[#E4E9DA] text-[#697851]",
+    CANCELLED: "bg-[#F5E5E2] text-[#A65F55]",
+    PROCESSING: "bg-[#E5EDF5] text-[#557797]",
+  };
+
+  return (
+    styles[normalizeStatus(status)] ??
+    "bg-[#F1EEE6] text-[#81765A]"
+  );
+};
+
+const getPaymentStyle = (status: unknown) => {
+  const styles: Record<string, string> = {
+    PAID: "bg-[#E8F2E8] text-[#4D7954]",
+    UNPAID: "bg-[#F5EBD8] text-[#A47A39]",
+    PENDING: "bg-[#F5EBD8] text-[#A47A39]",
+    PARTIALLY_PAID: "bg-[#E7EDF7] text-[#5474A2]",
+    FAILED: "bg-[#F5E4E1] text-[#AC665C]",
+    EXPIRED: "bg-[#F5E4E1] text-[#AC665C]",
+  };
+
+  return (
+    styles[normalizePaymentStatus(status)] ??
+    "bg-[#F1EEE6] text-[#81765A]"
+  );
+};
+
+export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] =
-    useState<OrderStatusFilter>("ALL");
-  const [paymentFilter, setPaymentFilter] =
-    useState<PaymentStatusFilter>("ALL");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const loadData = useCallback(async () => {
-    try {
-      const [ordersResponse, customersResponse] = await Promise.all([
-        api.get("/order"),
-        api.get("/customer"),
-      ]);
-
-      const loadedOrders = ordersResponse.data.data;
-      const loadedCustomers = customersResponse.data.data;
-
-      setOrders(Array.isArray(loadedOrders) ? loadedOrders : []);
-      setCustomers(Array.isArray(loadedCustomers) ? loadedCustomers : []);
-      setError("");
-    } catch {
-      setError("Failed to load orders. Please check your connection and try again.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [paymentFilter, setPaymentFilter] = useState("ALL");
+  const [sortKey, setSortKey] = useState<SortKey>("newest");
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    let cancelled = false;
+    let active = true;
 
-    const timer = window.setTimeout(() => {
-      if (!cancelled) {
-        void loadData();
+    const loadData = async () => {
+      try {
+        const [ordersResponse, customersResponse] = await Promise.all([
+          api.get("/order"),
+          api.get("/customer"),
+        ]);
+
+        if (!active) return;
+
+        setOrders(extractArray<Order>(ordersResponse.data));
+        setCustomers(extractArray<Customer>(customersResponse.data));
+      } catch (error) {
+        console.error("Failed to load orders:", error);
+      } finally {
+        if (active) setLoading(false);
       }
-    }, 0);
+    };
+
+    void loadData();
 
     return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
+      active = false;
     };
-  }, [loadData]);
+  }, []);
 
   const customerMap = useMemo(
-    () =>
-      new Map(
-        customers.map((customer) => [
-          customer.id,
-          customer.name,
-        ]),
-      ),
+    () => new Map(customers.map((customer) => [customer.id, customer])),
     [customers],
   );
 
-  const filteredOrders = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
+  const getCustomer = (order: Order) => {
+    if (order.customer) return order.customer;
 
-    return orders
-      .filter((order) => {
-        const customerName =
-          customerMap.get(order.customerId) ?? "";
+    return order.customerId
+      ? customerMap.get(order.customerId) ?? null
+      : null;
+  };
 
-        const matchesSearch =
-          order.orderCode.toLowerCase().includes(normalizedSearch) ||
-          customerName.toLowerCase().includes(normalizedSearch);
+  const getCustomerName = (order: Order) =>
+    readString(
+      getCustomer(order)?.name,
+      getCustomer(order)?.phone,
+      order.customerName,
+    ) || "-";
 
-        const matchesStatus =
-          statusFilter === "ALL" ||
-          order.orderStatus === statusFilter;
+  const getCustomerPhone = (order: Order) =>
+    readString(getCustomer(order)?.phone);
 
-        const matchesPayment =
-          paymentFilter === "ALL" ||
-          order.paymentStatus === paymentFilter;
+  const summary = useMemo(() => {
+    const total = orders.length;
 
-        return matchesSearch && matchesStatus && matchesPayment;
-      })
-      .sort(
-        (first, second) =>
-          new Date(second.createdAt).getTime() -
-          new Date(first.createdAt).getTime(),
-      );
-  }, [orders, customerMap, search, statusFilter, paymentFilter]);
+    const completed = orders.filter(
+      (order) => normalizeStatus(getOrderStatus(order)) === "COMPLETED",
+    ).length;
 
-  const activeOrders = useMemo(
-    () =>
-      orders.filter(
-        (order) =>
-          order.orderStatus !== "SELESAI" &&
-          order.orderStatus !== "DIBATALKAN",
-      ).length,
-    [orders],
-  );
+    const cancelled = orders.filter(
+      (order) => normalizeStatus(getOrderStatus(order)) === "CANCELLED",
+    ).length;
 
-  const unpaidOrders = useMemo(
-    () =>
-      orders.filter(
-        (order) => order.paymentStatus === "BELUM_DIBAYAR",
-      ).length,
-    [orders],
-  );
+    const active = total - completed - cancelled;
 
-  const readyOrders = useMemo(
-    () =>
-      orders.filter(
-        (order) => order.orderStatus === "SIAP_DIAMBIL",
-      ).length,
-    [orders],
-  );
+    const processing = orders.filter((order) =>
+      ["WASHING", "DRYING", "IRONING"].includes(
+        normalizeStatus(getOrderStatus(order)),
+      ),
+    ).length;
 
-  const stats: StatCard[] = [
+    const ready = orders.filter(
+      (order) => normalizeStatus(getOrderStatus(order)) === "READY",
+    ).length;
+
+    const unpaid = orders.filter(
+      (order) =>
+        ["UNPAID", "PARTIALLY_PAID", "FAILED"].includes(
+          normalizePaymentStatus(getOrderPaymentStatus(order)),
+        ) &&
+        normalizeStatus(getOrderStatus(order)) !== "CANCELLED",
+    ).length;
+
+    return { total, active, processing, ready, unpaid };
+  }, [orders]);
+
+  const summaryCards = [
     {
-      label: "Total orders",
-      value: orders.length,
-      description: "All orders recorded",
-      icon: ClipboardList,
-      iconClass: "bg-[#F0EEE7] text-[#77785F]",
+      title: "Total orders",
+      value: summary.total,
+      description: "Orders recorded",
+      tone: "default",
     },
     {
-      label: "Active orders",
-      value: activeOrders,
-      description: "Not yet completed",
-      icon: Clock3,
-      iconClass: "bg-[#E9EEF7] text-[#5474A2]",
+      title: "Active orders",
+      value: summary.active,
+      description: "Currently in progress",
+      tone: "default",
     },
     {
-      label: "Ready for pickup",
-      value: readyOrders,
-      description: "Waiting for collection",
-      icon: CheckCircle2,
-      iconClass: "bg-[#E8F2E8] text-[#4D7954]",
+      title: "Processing",
+      value: summary.processing,
+      description: "Being processed",
+      tone: "default",
     },
     {
-      label: "Unpaid orders",
-      value: unpaidOrders,
-      description: "Awaiting payment",
-      icon: ArrowDownUp,
-      iconClass: "bg-[#F8F0E1] text-[#A47A39]",
+      title: "Ready for pickup",
+      value: summary.ready,
+      description: "Waiting for pickup",
+      tone: "sage",
+    },
+    {
+      title: "Unpaid orders",
+      value: summary.unpaid,
+      description: "Payment outstanding",
+      tone: "rose",
     },
   ];
 
-  const hasActiveFilters =
-    search.trim() !== "" ||
-    statusFilter !== "ALL" ||
-    paymentFilter !== "ALL";
+  const filteredOrders = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
 
-  const resetFilters = () => {
-    setSearch("");
-    setStatusFilter("ALL");
-    setPaymentFilter("ALL");
+    const result = orders.filter((order) => {
+      const customerName = getCustomerName(order).toLowerCase();
+      const customerPhone = getCustomerPhone(order).toLowerCase();
+      const orderCode = getOrderCode(order).toLowerCase();
+
+      const matchesSearch =
+        !keyword ||
+        orderCode.includes(keyword) ||
+        customerName.includes(keyword) ||
+        customerPhone.includes(keyword);
+
+      const normalizedStatus = normalizeStatus(getOrderStatus(order));
+      const normalizedPayment = normalizePaymentStatus(
+        getOrderPaymentStatus(order),
+      );
+
+      const matchesStatus =
+        statusFilter === "ALL" || normalizedStatus === statusFilter;
+
+      const matchesPayment =
+        paymentFilter === "ALL" || normalizedPayment === paymentFilter;
+
+      return matchesSearch && matchesStatus && matchesPayment;
+    });
+
+    result.sort((a, b) => {
+      const dateA = new Date(getOrderDate(a)).getTime() || 0;
+      const dateB = new Date(getOrderDate(b)).getTime() || 0;
+
+      if (sortKey === "newest") return dateB - dateA;
+      if (sortKey === "oldest") return dateA - dateB;
+      if (sortKey === "highest") return getOrderTotal(b) - getOrderTotal(a);
+      if (sortKey === "lowest") return getOrderTotal(a) - getOrderTotal(b);
+
+      return 0;
+    });
+
+    return result;
+  }, [orders, customers, search, statusFilter, paymentFilter, sortKey]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const paginatedOrders = filteredOrders.slice(
+    (safeCurrentPage - 1) * PAGE_SIZE,
+    safeCurrentPage * PAGE_SIZE,
+  );
+
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 5) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    if (safeCurrentPage <= 3) {
+      return [1, 2, 3, "...", totalPages] as const;
+    }
+
+    if (safeCurrentPage >= totalPages - 2) {
+      return [1, "...", totalPages - 2, totalPages - 1, totalPages] as const;
+    }
+
+    return [
+      1,
+      "...",
+      safeCurrentPage - 1,
+      safeCurrentPage,
+      safeCurrentPage + 1,
+      "...",
+      totalPages,
+    ] as const;
+  }, [safeCurrentPage, totalPages]);
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    setCurrentPage(1);
   };
 
-  const handleRefresh = () => {
-    setLoading(true);
-    void loadData();
+  const handleStatusChange = (value: string) => {
+    setStatusFilter(value);
+    setCurrentPage(1);
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-5">
-        <div className="animate-pulse space-y-2">
-          <div className="h-3 w-28 rounded-full bg-[#E5DED3]" />
-          <div className="h-7 w-52 rounded-lg bg-[#E5DED3]" />
-          <div className="h-4 w-72 max-w-full rounded-lg bg-[#EAE4DB]" />
-        </div>
+  const handlePaymentChange = (value: string) => {
+    setPaymentFilter(value);
+    setCurrentPage(1);
+  };
 
-        <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-28 animate-pulse rounded-xl border border-[#E7E0D6] bg-white"
-            />
-          ))}
-        </div>
+  const handleSortChange = (value: SortKey) => {
+    setSortKey(value);
+    setCurrentPage(1);
+  };
 
-        <div className="h-16 animate-pulse rounded-xl border border-[#E7E0D6] bg-white" />
-        <div className="h-80 animate-pulse rounded-xl border border-[#E7E0D6] bg-white" />
-      </div>
-    );
-  }
-
-  if (error && orders.length === 0) {
-    return (
-      <div className="flex min-h-[45vh] flex-col items-center justify-center px-4 text-center">
-        <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-[#FAEFED] text-[#AC665C]">
-          <ClipboardList size={22} />
-        </div>
-
-        <h2 className="font-heading text-lg font-semibold text-[#34382D]">
-          Unable to load orders
-        </h2>
-
-        <p className="mt-2 max-w-md text-sm leading-6 text-[#858579]">
-          {error}
-        </p>
-
-        <Button
-          type="button"
-          onClick={handleRefresh}
-          className="mt-4 h-9 gap-2 rounded-lg bg-[#788A61] px-3 text-sm text-white hover:bg-[#64764F]"
-        >
-          <RefreshCw size={14} />
-          Try again
-        </Button>
-      </div>
-    );
-  }
+  const controlClass =
+    "h-10 rounded-lg border border-[#E5DED3] bg-[#FBF9F5] px-3 text-xs text-[#53594A] outline-none transition-colors focus:border-[#81906C]";
 
   return (
-    <div className="space-y-5 pb-6">
-      <section className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+    <div className="space-y-6 pb-8">
+      <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
         <div>
-          <div className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#81906C]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#81906C]" />
-            Order management
-          </div>
+          <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-[#81906C]">
+            Laundrify / Workspace
+          </p>
 
-          <h1 className="font-heading text-2xl font-semibold tracking-tight text-[#34382D]">
+          <h1 className="font-heading text-3xl font-medium tracking-[-1.5px] text-[#34382D] sm:text-[38px]">
             Orders
           </h1>
 
-          <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-[#858579]">
-            Manage laundry orders, track progress, and monitor payments.
+          <p className="mt-2 max-w-lg text-sm leading-6 text-[#858579]">
+            Manage and track all laundry orders in one place.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#E5DED3] bg-white px-2.5 text-xs text-[#727568]">
-            <CalendarDays size={14} className="text-[#81906C]" />
-            <span>
-              {new Intl.DateTimeFormat("id-ID", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              }).format(new Date())}
-            </span>
+        <Link
+          to="/orders/create"
+          className="inline-flex h-10 w-fit items-center justify-center gap-2 rounded-lg bg-[#788A61] px-4 text-xs font-semibold text-white transition-colors hover:bg-[#64764F]"
+        >
+          <Plus size={15} />
+          Create order
+        </Link>
+      </section>
+
+      <section>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="font-heading text-base font-semibold tracking-tight text-[#34382D]">
+              Operational overview
+            </h2>
+            <p className="mt-1 text-xs text-[#858579]">
+              A snapshot of your current order workload.
+            </p>
           </div>
 
-          <Button
-            type="button"
-            onClick={() => navigate("/orders/create")}
-            className="h-9 gap-1.5 rounded-lg bg-[#788A61] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#64764F]"
-          >
-            <Plus size={15} />
-            Create order
-          </Button>
+          <span className="hidden text-[10px] uppercase tracking-[0.14em] text-[#96968C] sm:block">
+            Live totals
+          </span>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {summaryCards.map((card, index) => {
+            const isSage = card.tone === "sage";
+            const isRose = card.tone === "rose";
+
+            return (
+              <article
+                key={card.title}
+                className={`relative min-w-0 overflow-hidden rounded-xl border p-4 transition-colors hover:border-[#D2D8C8] ${
+                  isSage
+                    ? "border-[#D6DECB] bg-[#E9EEDF]"
+                    : isRose
+                      ? "border-[#EBD5D0] bg-[#F5E8E5]"
+                      : "border-[#E7E0D6] bg-[#FBF9F5]"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-medium text-[#777B70]">
+                    {card.title}
+                  </p>
+                </div>
+
+                <p
+                  className={`mt-5 break-words font-heading text-[27px] font-medium leading-tight tracking-[-1px] tabular-nums ${
+                    isSage
+                      ? "text-[#536541]"
+                      : isRose
+                        ? "text-[#98645B]"
+                        : "text-[#34382D]"
+                  }`}
+                >
+                  {card.value}
+                </p>
+
+                <div className="mt-4 flex items-center gap-2 border-t border-[#34382D]/[0.08] pt-3">
+                  <span
+                    className={`size-1.5 shrink-0 rounded-full ${
+                      index === 0 || isSage
+                        ? "bg-[#81906C]"
+                        : isRose
+                          ? "bg-[#B9796E]"
+                          : "bg-[#C7C6B9]"
+                    }`}
+                  />
+                  <span className="text-[11px] leading-4 text-[#858579]">
+                    {card.description}
+                  </span>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-        {stats.map((stat) => {
-          const Icon = stat.icon;
+      <section className="overflow-hidden rounded-xl border border-[#E7E0D6] bg-[#FBF9F5]">
+        <div className="flex flex-col gap-4 border-b border-[#EAE4DB] px-5 py-5 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.17em] text-[#81906C]">
+              Order management
+            </p>
 
-          return (
-            <Card
-              key={stat.label}
-              className="rounded-xl border-[#E7E0D6] bg-white shadow-[0_1px_5px_rgba(52,56,45,0.025)] transition-colors hover:border-[#D7DCCF]"
-            >
-              <CardContent className="p-3.5 sm:p-4">
-                <div className="flex items-start justify-between gap-2.5">
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-[#777B70]">
-                      {stat.label}
-                    </p>
-
-                    <p className="mt-2 font-heading text-2xl font-semibold leading-none tracking-tight text-[#34382D]">
-                      {stat.value}
-                    </p>
-                  </div>
-
-                  <div
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${stat.iconClass}`}
-                  >
-                    <Icon size={17} strokeWidth={1.8} />
-                  </div>
-                </div>
-
-                <p className="mt-2.5 text-[11px] leading-4 text-[#94968C]">
-                  {stat.description}
-                </p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </section>
-
-      <Card className="rounded-xl border-[#E7E0D6] bg-white shadow-sm">
-        <CardContent className="p-3.5 sm:p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <SlidersHorizontal size={15} className="text-[#81906C]" />
-            <h2 className="text-[13px] font-semibold text-[#454B3A]">
-              Search and filters
+            <h2 className="mt-2 font-heading text-lg font-semibold tracking-tight text-[#34382D]">
+              All orders
             </h2>
+
+            <p className="mt-1 text-xs leading-5 text-[#858579]">
+              {filteredOrders.length}{" "}
+              {filteredOrders.length === 1 ? "order" : "orders"} found
+            </p>
           </div>
 
-          <div className="grid gap-2.5 md:grid-cols-[minmax(180px,1fr)_190px_175px_auto]">
-            <div className="relative">
+          <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-center">
+            <div className="relative min-w-0 sm:col-span-2 lg:w-64">
               <Search
                 size={15}
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#96968C]"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#858579]"
               />
-
-              <Input
+              <input
+                type="text"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => handleSearchChange(event.target.value)}
                 placeholder="Search order or customer..."
                 aria-label="Search orders"
-                className="h-9 border-[#E3DED5] bg-[#FCFBF8] pl-9 text-xs placeholder:text-[#A1A194] focus-visible:ring-[#8B9A6E]"
+                className={`${controlClass} w-full pl-9 pr-3 placeholder:text-[#A3A094]`}
               />
             </div>
 
             <select
               value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(event.target.value as OrderStatusFilter)
-              }
+              onChange={(event) => handleStatusChange(event.target.value)}
               aria-label="Filter by order status"
-              className="h-9 w-full rounded-md border border-[#E3DED5] bg-[#FCFBF8] px-2.5 text-xs text-[#53594A] outline-none transition focus:ring-2 focus:ring-[#8B9A6E]/50"
+              className={controlClass}
             >
-              <option value="ALL">All order statuses</option>
-              <option value="PESANAN_DITERIMA">Received</option>
-              <option value="DICUCI">Washing</option>
-              <option value="DIKERINGKAN">Drying</option>
-              <option value="DISETRIKA">Ironing</option>
-              <option value="SIAP_DIAMBIL">Ready for pickup</option>
-              <option value="SELESAI">Completed</option>
-              <option value="DIBATALKAN">Cancelled</option>
+              <option value="ALL">All statuses</option>
+              <option value="RECEIVED">Received</option>
+              <option value="WASHING">Washing</option>
+              <option value="DRYING">Drying</option>
+              <option value="IRONING">Ironing</option>
+              <option value="READY">Ready</option>
+              <option value="COMPLETED">Completed</option>
+              <option value="CANCELLED">Cancelled</option>
+              <option value="PROCESSING">Processing</option>
             </select>
 
             <select
               value={paymentFilter}
-              onChange={(event) =>
-                setPaymentFilter(event.target.value as PaymentStatusFilter)
-              }
+              onChange={(event) => handlePaymentChange(event.target.value)}
               aria-label="Filter by payment status"
-              className="h-9 w-full rounded-md border border-[#E3DED5] bg-[#FCFBF8] px-2.5 text-xs text-[#53594A] outline-none transition focus:ring-2 focus:ring-[#8B9A6E]/50"
+              className={controlClass}
             >
-              <option value="ALL">All payment statuses</option>
-              <option value="BELUM_DIBAYAR">Unpaid</option>
-              <option value="SUDAH_DIBAYAR">Paid</option>
+              <option value="ALL">All payments</option>
+              <option value="PAID">Paid</option>
+              <option value="UNPAID">Unpaid</option>
+              <option value="PENDING">Pending</option>
+              <option value="PARTIALLY_PAID">Partially paid</option>
+              <option value="FAILED">Failed</option>
+              <option value="EXPIRED">Expired</option>
             </select>
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={resetFilters}
-              disabled={!hasActiveFilters}
-              className="h-9 gap-1.5 border-[#E3DED5] bg-white px-2.5 text-xs text-[#65695D] hover:bg-[#F5F2EC] disabled:opacity-50"
-            >
-              <X size={13} />
-              Reset
-            </Button>
+            <label className="relative flex min-w-0 items-center">
+              <ArrowUpDown
+                size={13}
+                className="pointer-events-none absolute left-3 text-[#858579]"
+              />
+              <select
+                value={sortKey}
+                onChange={(event) =>
+                  handleSortChange(event.target.value as SortKey)
+                }
+                aria-label="Sort orders"
+                className={`${controlClass} w-full pl-8 lg:w-auto`}
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="highest">Highest amount</option>
+                <option value="lowest">Lowest amount</option>
+              </select>
+            </label>
           </div>
-
-          {hasActiveFilters && (
-            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-[#858579]">
-                Active filters:
-              </span>
-
-              {search.trim() && (
-                <Badge
-                  variant="outline"
-                  className="rounded-md border-[#E3DED5] bg-[#F8F6F1] px-2 py-0.5 text-[10px] font-normal text-[#65695D]"
-                >
-                  Search: {search.trim()}
-                </Badge>
-              )}
-
-              {statusFilter !== "ALL" && (
-                <Badge
-                  variant="outline"
-                  className="rounded-md border-[#D7DCCF] bg-[#F0F3EB] px-2 py-0.5 text-[10px] font-normal text-[#59694A]"
-                >
-                  {orderStatusLabels[statusFilter]}
-                </Badge>
-              )}
-
-              {paymentFilter !== "ALL" && (
-                <Badge
-                  variant="outline"
-                  className="rounded-md border-[#D7DCCF] bg-[#F0F3EB] px-2 py-0.5 text-[10px] font-normal text-[#59694A]"
-                >
-                  {paymentStatusLabels[paymentFilter]}
-                </Badge>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {error && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[#EBD6D3] bg-[#FAEFED] px-3 py-2.5">
-          <p className="text-xs text-[#AC665C]">{error}</p>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={handleRefresh}
-            className="h-7 gap-1.5 border-[#EBD6D3] bg-white px-2 text-[11px] text-[#AC665C] hover:bg-[#F9E5E1]"
-          >
-            <RefreshCw size={12} />
-            Retry
-          </Button>
         </div>
-      )}
 
-      <Card className="overflow-hidden rounded-xl border-[#E7E0D6] bg-white shadow-sm">
-        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b border-[#EEE9E1] px-3.5 py-3 sm:px-4">
-          <div>
-            <CardTitle className="font-heading text-sm font-semibold text-[#34382D]">
-              Order list
-            </CardTitle>
+        <div className="overflow-x-auto border-t border-[#EAE4DB]">
+          <table className="w-full min-w-[850px] border-collapse text-left">
+            <thead>
+              <tr className="bg-[#F4F1EA]">
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579] sm:px-5">
+                  Order
+                </th>
+                <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579]">
+                  Customer
+                </th>
+                <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579]">
+                  Order date
+                </th>
+                <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579]">
+                  Status
+                </th>
+                <th className="px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579]">
+                  Payment
+                </th>
+                <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579]">
+                  Total
+                </th>
+                <th className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.12em] text-[#858579]">
+                  Action
+                </th>
+              </tr>
+            </thead>
 
-            <p className="mt-1 text-[11px] text-[#858579]">
-              Showing {filteredOrders.length} of {orders.length} orders
-            </p>
-          </div>
-
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleRefresh}
-            className="h-8 gap-1.5 rounded-md border-[#E3DED5] bg-white px-2.5 text-[11px] font-medium text-[#65695D] hover:bg-[#F5F2EC]"
-          >
-            <RefreshCw size={12} />
-            Refresh
-          </Button>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          {filteredOrders.length === 0 ? (
-            <div className="flex min-h-48 flex-col items-center justify-center px-4 py-8 text-center">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#F3F0E9] text-[#858B75]">
-                <ClipboardList size={21} strokeWidth={1.7} />
-              </div>
-
-              <h3 className="mt-3 font-heading text-sm font-semibold text-[#454B3A]">
-                {hasActiveFilters ? "No matching orders" : "No orders yet"}
-              </h3>
-
-              <p className="mt-1.5 max-w-sm text-xs leading-5 text-[#858579]">
-                {hasActiveFilters
-                  ? "Try changing your search or filters."
-                  : "Create your first laundry order to start tracking your operations."}
-              </p>
-
-              {hasActiveFilters ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={resetFilters}
-                  className="mt-3 h-8 gap-1.5 border-[#E3DED5] px-2.5 text-xs text-[#53594A] hover:bg-[#F5F2EC]"
-                >
-                  <X size={13} />
-                  Clear filters
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  onClick={() => navigate("/orders/create")}
-                  className="mt-3 h-8 gap-1.5 rounded-lg bg-[#788A61] px-2.5 text-xs text-white hover:bg-[#64764F]"
-                >
-                  <Plus size={14} />
-                  Create order
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[790px] border-collapse text-left">
-                <thead>
-                  <tr className="bg-[#FAF9F6]">
-                    <th className="whitespace-nowrap px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579] sm:px-4">
-                      Order
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579]">
-                      Customer
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579]">
-                      Created
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579]">
-                      Order status
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579]">
-                      Payment
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.09em] text-[#858579]">
-                      Total
-                    </th>
-                    <th className="px-3 py-2.5 sm:px-4" />
+            <tbody>
+              {loading ? (
+                Array.from({ length: 5 }, (_, index) => (
+                  <tr key={index} className="border-t border-[#EEE9E1]">
+                    {Array.from({ length: 7 }, (_, cellIndex) => (
+                      <td key={cellIndex} className="px-3 py-3.5">
+                        <div className="h-4 animate-pulse rounded bg-[#F0EDE5]" />
+                      </td>
+                    ))}
                   </tr>
-                </thead>
+                ))
+              ) : paginatedOrders.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="px-5 py-14 text-center text-sm text-[#858579]"
+                  >
+                    <div className="flex flex-col items-center">
+                      <ClipboardList
+                        size={26}
+                        strokeWidth={1.5}
+                        className="mb-3 text-[#A4A697]"
+                      />
+                      <p className="text-sm font-medium text-[#53594A]">
+                        No orders found
+                      </p>
+                      <p className="mt-1 text-xs text-[#858579]">
+                        Try adjusting your search or filters.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                paginatedOrders.map((order) => {
+                  const status = normalizeStatus(getOrderStatus(order));
+                  const paymentStatus = normalizePaymentStatus(
+                    getOrderPaymentStatus(order),
+                  );
 
-                <tbody>
-                  {filteredOrders.map((order) => {
-                    const customerName =
-                      customerMap.get(order.customerId) ??
-                      "Unknown customer";
+                  return (
+                    <tr
+                      key={order.id}
+                      className={`border-t border-[#EEE9E1] transition-colors ${
+                        status === "COMPLETED"
+                          ? "bg-[#F0F3E9] hover:bg-[#E9EEDF]"
+                          : status === "CANCELLED"
+                            ? "bg-[#FCF3F1] hover:bg-[#F9EAE7]"
+                            : "hover:bg-white"
+                      }`}
+                    >
+                      <td className="px-4 py-3.5 sm:px-5">
+                        <Link
+                          to={`/order/${order.id}`}
+                          className="text-xs font-semibold text-[#454B3A] transition hover:text-[#758760]"
+                        >
+                          {getOrderCode(order)}
+                        </Link>
+                        <p className="mt-1 whitespace-nowrap text-[10px] text-[#96968C]">
+                          {formatDate(getOrderDate(order))}
+                        </p>
+                        <p className="mt-1 text-[10px] text-[#858579]">
+                          {order.items?.length ?? 0}{" "}
+                          {(order.items?.length ?? 0) === 1 ? "item" : "items"}
+                        </p>
+                      </td>
 
-                    return (
-                      <tr
-                        key={order.id}
-                        className="border-t border-[#F0ECE5] transition-colors hover:bg-[#FCFBF8]"
-                      >
-                        <td className="px-3 py-3 sm:px-4">
-                          <p className="whitespace-nowrap text-xs font-semibold text-[#454B3A]">
-                            {order.orderCode}
-                          </p>
-                          <p className="mt-0.5 text-[10px] text-[#96968C]">
-                            ID: {order.id}
-                          </p>
-                        </td>
+                      <td className="px-3 py-3.5">
+                        <span className="block max-w-[150px] truncate text-xs font-medium text-[#53594A]">
+                          {getCustomerName(order)}
+                        </span>
+                        <p className="mt-1 text-[10px] text-[#96968C]">
+                          {getCustomerPhone(order) || "No phone number"}
+                        </p>
+                      </td>
 
-                        <td className="px-3 py-3">
-                          <p className="max-w-[145px] truncate text-xs font-medium text-[#53594A]">
-                            {customerName}
-                          </p>
-                          <p className="mt-0.5 text-[10px] text-[#96968C]">
-                            ID: {order.customerId}
-                          </p>
-                        </td>
+                      <td className="whitespace-nowrap px-3 py-3.5 text-xs text-[#66685D]">
+                        {formatDate(getOrderDate(order))}
+                      </td>
 
-                        <td className="whitespace-nowrap px-3 py-3">
-                          <p className="text-xs text-[#53594A]">
-                            {formatDate(order.createdAt)}
-                          </p>
-                          <p className="mt-0.5 text-[10px] text-[#96968C]">
-                            {formatTime(order.createdAt)}
-                          </p>
-                        </td>
+                      <td className="px-3 py-3.5">
+                        <span
+                          className={`inline-flex whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-medium ${getStatusStyle(status)}`}
+                        >
+                          {getStatusLabel(status)}
+                        </span>
+                      </td>
 
-                        <td className="px-3 py-3">
-                          <Badge
-                            variant="outline"
-                            className={`whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-medium ${orderStatusClasses[order.orderStatus]}`}
-                          >
-                            {orderStatusLabels[order.orderStatus]}
-                          </Badge>
-                        </td>
+                      <td className="px-3 py-3.5">
+                        <span
+                          className={`inline-flex whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-medium ${getPaymentStyle(paymentStatus)}`}
+                        >
+                          {getPaymentLabel(paymentStatus)}
+                        </span>
+                      </td>
 
-                        <td className="px-3 py-3">
-                          <Badge
-                            variant="outline"
-                            className={`whitespace-nowrap rounded-md border px-2 py-0.5 text-[10px] font-medium ${paymentStatusClasses[order.paymentStatus]}`}
-                          >
-                            {paymentStatusLabels[order.paymentStatus]}
-                          </Badge>
-                        </td>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-right text-xs font-semibold tabular-nums text-[#34382D]">
+                        {formatCurrency(getOrderTotal(order))}
+                      </td>
 
-                        <td className="whitespace-nowrap px-3 py-3 text-right">
-                          <span className="text-xs font-semibold tabular-nums text-[#34382D]">
-                            {formatCurrency(order.total)}
-                          </span>
-                        </td>
+                      <td className="px-5 py-3.5 text-right">
+                        <Link
+                          to={`/order/${order.id}`}
+                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-xs font-semibold text-[#758760] transition-colors hover:bg-[#E8EEE0] hover:text-[#536541]"
+                        >
+                          View details
+                          <ChevronRight size={14} />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                        <td className="whitespace-nowrap px-3 py-3 text-right sm:px-4">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => navigate(`/order/${order.id}`)}
-                            className="h-7 gap-1 rounded-md border-[#DDE2D4] bg-white px-2 text-[10px] font-medium text-[#65774D] transition hover:border-[#C9D2BD] hover:bg-[#F1F4EC]"
-                          >
-                            Details
-                            <ArrowRight size={11} />
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        {!loading && filteredOrders.length > 0 && (
+          <div className="flex flex-col gap-3 border-t border-[#EAE4DB] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-[#858579]">
+              Showing{" "}
+              <span className="font-medium text-[#53594A]">
+                {(safeCurrentPage - 1) * PAGE_SIZE + 1}
+              </span>
+              {"–"}
+              <span className="font-medium text-[#53594A]">
+                {Math.min(safeCurrentPage * PAGE_SIZE, filteredOrders.length)}
+              </span>{" "}
+              of{" "}
+              <span className="font-medium text-[#53594A]">
+                {filteredOrders.length}
+              </span>{" "}
+              orders
+            </p>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage((page) => Math.max(1, page - 1))
+                }
+                disabled={safeCurrentPage === 1}
+                aria-label="Previous page"
+                className="flex size-9 items-center justify-center rounded-lg border border-[#E7E0D6] text-[#77786D] transition-colors hover:bg-[#F0EDE5] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {pageNumbers.map((page, index) =>
+                page === "..." ? (
+                  <span
+                    key={`ellipsis-${index}`}
+                    className="flex size-9 items-center justify-center text-xs text-[#858579]"
+                  >
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={page}
+                    type="button"
+                    onClick={() => setCurrentPage(Number(page))}
+                    aria-current={safeCurrentPage === page ? "page" : undefined}
+                    className={`flex size-9 items-center justify-center rounded-lg border text-xs transition-colors ${
+                      safeCurrentPage === page
+                        ? "border-[#81906C] bg-[#81906C] font-semibold text-white"
+                        : "border-transparent text-[#77786D] hover:border-[#E7E0D6] hover:bg-[#F0EDE5]"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ),
+              )}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setCurrentPage((page) => Math.min(totalPages, page + 1))
+                }
+                disabled={safeCurrentPage === totalPages}
+                aria-label="Next page"
+                className="flex size-9 items-center justify-center rounded-lg border border-[#E7E0D6] text-[#77786D] transition-colors hover:bg-[#F0EDE5] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronRight size={16} />
+              </button>
             </div>
-          )}
+          </div>
+        )}
+      </section>
 
-          {filteredOrders.length > 0 && (
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#EEE9E1] px-3.5 py-2.5 sm:px-4">
-              <p className="text-[10px] text-[#96968C]">
-                {filteredOrders.length}{" "}
-                {filteredOrders.length === 1 ? "order" : "orders"} displayed
-              </p>
-              <p className="text-[10px] text-[#96968C]">
-                Sorted by most recent
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-[#E5DED3] pt-4 text-[10px] text-[#96968C]">
+        <span>Laundrify workspace</span>
+        <span>Care in every detail.</span>
+      </footer>
     </div>
   );
-};
-
-export default OrdersPage;
+}
